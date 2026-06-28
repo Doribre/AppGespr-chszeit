@@ -1,0 +1,11 @@
+node_modules/
+server.log
+server.err.log
+*.local
+.DS_Store
+Thumbs.db
+*.tar.bz2
+*.tgz
+.npm-cache/
+vendor-inspect/
+sherpa-releases.json

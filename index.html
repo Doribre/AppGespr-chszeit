@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Schwätzometer</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <script src="./src/coi.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Session controls">
+        <div>
+          <p class="eyebrow">Lokale Speaker-Share-Erkennung</p>
+          <h1>Schwätzometer</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="micButton" class="primary" type="button">Mikrofon starten</button>
+          <button id="resetButton" type="button">Session zurücksetzen</button>
+        </div>
+      </section>
+
+      <section class="status-strip" aria-live="polite">
+        <div>
+          <span>Engine</span>
+          <strong id="engineStatus">nicht geladen</strong>
+        </div>
+        <div>
+          <span>Mikrofon</span>
+          <strong id="micStatus">aus</strong>
+        </div>
+        <div>
+          <span>Zuhörzeit</span>
+          <strong id="liveClock">00:00</strong>
+        </div>
+        <div>
+          <span>Aktuell</span>
+          <strong id="currentSpeaker">-</strong>
+        </div>
+      </section>
+
+      <section class="guide-panel" aria-label="Kurzanleitung">
+        <div class="guide-copy">
+          <p class="eyebrow">Ablauf</p>
+          <h2>So testest du das erste Gespräch</h2>
+          <p>
+            Erst Mikrofon starten, dann die Namen per Tastatur eingeben. Danach spricht jede Person 20 Sekunden für
+            ihr Profil. Es gibt keine Spracherkennung und keine Transkription.
+          </p>
+        </div>
+        <ol class="guide-steps">
+          <li><strong>1</strong><span>Mikrofon freigeben</span></li>
+          <li><strong>2</strong><span>Namen eintippen</span></li>
+          <li><strong>3</strong><span>Stimme kennenlernen</span></li>
+          <li><strong>4</strong><span>Zuhören und Zeiten ermitteln</span></li>
+        </ol>
+        <div class="guide-note" aria-live="polite">
+          <div>
+            <span>Nächster Schritt</span>
+            <strong id="nextAction">Mikrofon starten.</strong>
+          </div>
+          <div class="guide-options">
+            <span>Möglichkeiten</span>
+            <ul id="currentOptions"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel participants-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Teilnehmer</h2>
+              <p><span id="participantCapacity">1/7</span> Namen per Tastatur. Bis 7 Personen sind möglich.</p>
+            </div>
+            <div class="participant-actions">
+              <button id="addParticipantButton" type="button">Person hinzufügen</button>
+            </div>
+          </div>
+          <div id="participantList" class="participant-list"></div>
+        </aside>
+
+        <section class="panel enrollment-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Stimme kennenlernen</h2>
+              <p>Der Name kommt aus dem Textfeld. Die Person spricht 20 Sekunden, damit Schwätzometer die Stimme zuordnen kann.</p>
+            </div>
+          </div>
+          <div id="enrollmentPrompt" class="prompt">Mikrofon starten und Teilnehmer anlegen.</div>
+          <div class="level-block" aria-label="Sprechpegel">
+            <div class="level-header">
+              <span>Sprechpegel</span>
+              <strong id="enrollmentLevelName">-</strong>
+            </div>
+            <div class="level-meter">
+              <div id="enrollmentLevelBar" class="level-fill"></div>
+            </div>
+          </div>
+          <div class="meter" aria-label="Fortschritt Stimme kennenlernen">
+            <div id="enrollmentProgress" class="meter-fill"></div>
+          </div>
+          <div class="control-row">
+            <button id="startEnrollmentButton" class="primary" type="button" disabled>Stimme kennenlernen</button>
+            <button id="skipEnrollmentButton" type="button" disabled>Aufnahme abschließen</button>
+          </div>
+          <p id="enrollmentDetails" class="fineprint">Stimmprofile werden nur im Arbeitsspeicher gehalten.</p>
+        </section>
+
+        <section class="panel live-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Zuhören / Zeitmessung</h2>
+              <p>Nur wenn der Zuhören-Button aktiv ist, verändern sich Zeiten und Diagramme.</p>
+            </div>
+          </div>
+          <div class="live-grid">
+            <div class="speaker-readout">
+              <span>Erkannt</span>
+              <strong id="liveSpeaker">Wartet</strong>
+              <small id="liveConfidence">-</small>
+            </div>
+            <div class="timer-readout">
+              <span>Status</span>
+              <strong id="displayCountdown">bereit</strong>
+              <small id="unknownState">Unknown aktiv bei niedriger Sicherheit</small>
+            </div>
+          </div>
+          <div class="control-row">
+            <button id="listenToggleButton" class="primary" type="button" disabled>Zuhören und Zeiten ermitteln</button>
+          </div>
+          <div id="scores" class="scores"></div>
+        </section>
+
+        <section class="panel share-panel">
+          <div class="panel-header">
+            <h2>Redeanteile</h2>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="shareChart" width="260" height="260" aria-label="Pie chart of speaking share"></canvas>
+            <div id="shareLegend" class="legend"></div>
+          </div>
+          <div id="shareBars" class="bar-chart" aria-label="Balkendiagramm der Redeanteile"></div>
+        </section>
+
+        <section class="panel timeline-panel">
+          <div class="panel-header">
+            <h2>Timeline</h2>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </section>
+
+        <section class="panel debug-panel">
+          <div class="panel-header">
+            <h2>Debug</h2>
+          </div>
+          <dl class="debug-grid">
+            <div><dt>Sample Rate</dt><dd id="debugSampleRate">-</dd></div>
+            <div><dt>Model Load</dt><dd id="debugModel">-</dd></div>
+            <div><dt>Latenz</dt><dd id="debugLatency">-</dd></div>
+            <div><dt>VAD</dt><dd id="debugVad">-</dd></div>
+            <div><dt>RMS</dt><dd id="debugRms">-</dd></div>
+            <div><dt>Frames</dt><dd id="debugFrames">0</dd></div>
+          </dl>
+          <pre id="debugScores" class="raw-scores">{}</pre>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
