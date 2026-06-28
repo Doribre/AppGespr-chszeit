@@ -10,6 +10,7 @@ Stand: 2026-06-28, Europe/Berlin
 - Branch in GitHub Desktop: `main`
 - GitHub-Desktop-Konto laut Screenshot: `Doribre`
 - Projektziel: nur GitHub. Keine GitLab-Remote, keine GitLab-CI, keine GitLab-Preview fuer dieses Projekt.
+- GitHub Pages wurde in den Repository-Settings auf `GitHub Actions` gestellt.
 
 ## Erstellt durch
 
