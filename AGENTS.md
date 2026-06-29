@@ -42,7 +42,7 @@ The app needs `SharedArrayBuffer`, so the browser must report `crossOriginIsolat
 - `src/app.js`: UI state and flow.
 - `src/audio/engine.js`: `SpeakerShareEngine` and active `SherpaOnnxWasmSpeakerEngine`.
 - `src/audio/vad.js`: local energy VAD for window filtering.
-- `src/audio/features.js`: older local feature helpers; not the active speaker engine.
+- `src/audio/features.js`: local audio embedding helpers used by the stage-2 browser profile comparison.
 - `src/charts.js`: chart helpers.
 - `src/styles.css`: UI styling.
 - `server.mjs`: local static server with COOP/COEP headers.
@@ -56,7 +56,7 @@ The active runtime is the official Sherpa-ONNX browser speaker-diarization build
 - `sherpa-onnx-wasm-main-speaker-diarization.wasm`
 - `sherpa-onnx-wasm-main-speaker-diarization.data`
 
-Do not replace it with `sherpa-onnx-wasm-nodejs.*`; that runtime is for Node.js and is not the browser path.
+Do not replace it with `sherpa-onnx-wasm-nodejs.*`; that runtime is for Node.js and is not the browser path. The current stage-2 engine still loads this official Sherpa Browser-WASM runtime and adds local, in-memory profile embeddings as a comparison layer above Sherpa diarization.
 
 ## GitHub Workflow
 

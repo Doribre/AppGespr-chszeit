@@ -1,6 +1,6 @@
 # Session-Metadaten
 
-Stand: 2026-06-28, Europe/Berlin
+Stand: 2026-06-29, Europe/Berlin
 
 ## Projekt
 
@@ -35,6 +35,8 @@ Wichtig: Codex hatte keinen direkten Zugriff auf GitHub-Credentials und hat kein
 - Live-Audio wird waehrend Sherpa-Rechenlaeufen gepuffert statt verworfen.
 - Live-Analysefenster aktuell: 1.25 Sekunden.
 - Live-Erkennung nutzt 4 Sekunden rollenden Kontext, tentative Entscheidungen und kurzen Hold auf den letzten stabilen Sprecher.
+- Stufe-2-Erkennung erzeugt lokale Session-Embeddings aus den 20-Sekunden-Stimmproben und kombiniert deren Scores mit Sherpa-Diarization-Scores.
+- Debug zeigt kombinierte Scores, lokale Embedding-Scores, rohe Embedding-Aehnlichkeiten und Sherpa-Diarization-Scores getrennt an.
 - VAD ist empfindlicher fuer leisere Gespraechssituationen.
 - Stoppen finalisiert die Live-Warteschlange, bevor Diagramme einfrieren.
 - Current Speaker, Scores, Unknown-State.
@@ -76,7 +78,8 @@ Noch nötig: Browser-Ladetest mit Mikrofonfreigabe in Chrome/Edge. Der Sherpa-Bu
 - Keine automatisierten Browser-/Mikrofontests.
 - Keine persistente Session-Historie.
 - Keine geprüfte produktive Sprecherbiometrie.
-- Hosting außerhalb von `localhost` braucht HTTPS und COOP/COEP-Header.
+- Hosting außerhalb von `localhost` braucht HTTPS und COOP/COEP-Header oder den vorhandenen COI-Service-Worker fuer GitHub Pages.
+- Der aktuelle Sherpa-Browser-Wrapper exponiert `embedding.onnx` nicht als separate JavaScript-Speaker-Verification-API; der neue Profilvergleich ist eine lokale Browser-Schicht ueber Sherpa-Diarization.
 
 ## Keine gespeicherten Geheimnisse
 

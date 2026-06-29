@@ -79,7 +79,7 @@ init();
 async function init() {
   state.engine = createEngine();
   state.engineInfo = await state.engine.initialize();
-  elements.engineStatus.textContent = state.engineInfo.ready ? state.engineInfo.backend : "nicht bereit";
+  elements.engineStatus.textContent = state.engineInfo.ready ? "Stufe 2 bereit" : "nicht bereit";
   elements.debugModel.textContent = state.engineInfo.modelStatus;
 
   addParticipant("Person 1");
@@ -858,8 +858,14 @@ function renderDebug() {
   elements.debugScores.textContent = JSON.stringify(
     {
       scores: debug?.scores ?? {},
+      embeddingScores: debug?.embeddingScores ?? {},
+      embeddingRawScores: debug?.embeddingRawScores ?? {},
+      diarizationScores: debug?.diarizationScores ?? {},
       margin: debug?.margin ?? 0,
+      embeddingMargin: debug?.embeddingMargin ?? 0,
+      diarizationMargin: debug?.diarizationMargin ?? 0,
       decisionMode: debug?.decisionMode ?? "-",
+      engineStage: state.engineInfo?.stage ?? "-",
       contextSeconds: debug?.contextSeconds ?? 0,
       profileAudit: debug?.profileAudit ?? state.lastProfileAudit ?? null,
       rawClusters: debug?.rawClusters ?? []

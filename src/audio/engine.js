@@ -1,5 +1,5 @@
 import { EnergyVad } from "./vad.js";
-import { downsampleTo16k } from "./features.js";
+import { averageEmbeddings, cosineSimilarity, createAudioEmbedding, downsampleTo16k } from "./features.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const WINDOW_SECONDS = 1.25;
@@ -7,15 +7,24 @@ const LIVE_CONTEXT_SECONDS = 4;
 const PROFILE_TARGET_SECONDS = 20;
 const PROFILE_READY_SECONDS = 12;
 const PROFILE_CONTEXT_SECONDS = 5;
+const PROFILE_EMBEDDING_SECONDS = 2.5;
+const PROFILE_EMBEDDING_HOP_SECONDS = 1.25;
+const MAX_PROFILE_EMBEDDINGS = 14;
 const SILENCE_GAP_SECONDS = 0.35;
-const UNKNOWN_THRESHOLD = 0.38;
-const MIN_MARGIN = 0.03;
-const TENTATIVE_THRESHOLD = 0.28;
+const UNKNOWN_THRESHOLD = 0.56;
+const MIN_MARGIN = 0.025;
+const TENTATIVE_THRESHOLD = 0.42;
 const TENTATIVE_MARGIN = 0.01;
 const HOLD_LAST_SPEAKER_MS = 4000;
-const CHANGE_SPEAKER_THRESHOLD = 0.34;
+const CHANGE_SPEAKER_THRESHOLD = 0.5;
 const MIN_PROFILE_PURITY = 0.62;
 const PROFILE_COLLISION_THRESHOLD = 0.72;
+const PROFILE_EMBEDDING_COLLISION_THRESHOLD = 0.985;
+const PROFILE_EMBEDDING_HARD_COLLISION_THRESHOLD = 0.995;
+const MIN_PROFILE_EMBEDDING_CONSISTENCY = 0.52;
+const EMBEDDING_WEIGHT = 0.68;
+const DIARIZATION_WEIGHT = 0.32;
+const AGREEMENT_BOOST = 0.08;
 const SHERPA_BASE = "./vendor/sherpa-onnx/";
 const SHERPA_BROWSER_MAIN = "sherpa-onnx-wasm-main-speaker-diarization.js";
 const SHERPA_BROWSER_WASM = "sherpa-onnx-wasm-main-speaker-diarization.wasm";
@@ -100,6 +109,7 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
 
     return {
       backend: "sherpa-onnx-wasm",
+      stage: "stage-2-browser-profile-embedding",
       modelStatus: this.modelStatus,
       targetSampleRate: TARGET_SAMPLE_RATE,
       windowSeconds: WINDOW_SECONDS,
@@ -129,6 +139,7 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
       updatedAt: Date.now()
     };
     profile.probe = selectProbeSamples(profile.samples, PROFILE_CONTEXT_SECONDS);
+    Object.assign(profile, createProfileEmbedding(profile.samples));
     this.profiles.set(participant.id, profile);
 
     const audit = this.auditProfiles();
@@ -168,7 +179,9 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
           durationMs: WINDOW_SECONDS * 1000,
           vad,
           latencyMs: performance.now() - started,
-          scores: {}
+          scores: {},
+          embeddingScores: {},
+          diarizationScores: {}
         });
         continue;
       }
@@ -187,6 +200,11 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         durationMs: WINDOW_SECONDS * 1000,
         vad,
         scores: classified.scores,
+        embeddingScores: classified.embeddingScores,
+        embeddingRawScores: classified.embeddingRawScores,
+        diarizationScores: classified.diarizationScores,
+        embeddingMargin: classified.embeddingMargin,
+        diarizationMargin: classified.diarizationMargin,
         decisionMode: classified.decisionMode,
         contextSeconds: this.liveContextSamples.length / TARGET_SAMPLE_RATE,
         latencyMs: performance.now() - started,
@@ -203,7 +221,9 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         durationMs: 0,
         vad,
         latencyMs: performance.now() - started,
-        scores: {}
+        scores: {},
+        embeddingScores: {},
+        diarizationScores: {}
       });
     }
 
@@ -257,47 +277,78 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
   auditProfiles() {
     const profiles = Array.from(this.profiles.values());
     const byId = {};
-
-    for (const profile of profiles) {
-      byId[profile.id] = createDefaultProfileQuality(profile);
-    }
-
-    if (profiles.length < 2) {
-      return { byId, collisions: [], clear: Object.values(byId).every((entry) => entry.clear) };
-    }
-
-    const regions = profiles.map((profile) => ({
-      id: profile.id,
-      samples: profile.probe
-    }));
-    const analysis = this.runDiarization(regions, { numClusters: -1, threshold: 0.5 });
     const collisions = [];
 
-    for (const region of analysis.regions) {
-      const quality = byId[region.id];
-      quality.cluster = region.primaryCluster;
-      quality.purity = region.purity;
-      quality.clusterMargin = region.margin;
+    for (const profile of profiles) {
+      const quality = createDefaultProfileQuality(profile);
+      quality.embeddingChunkCount = profile.embeddings?.length ?? 0;
+      quality.embeddingConsistency = roundScore(profile.embeddingConsistency ?? 0);
+      quality.embeddingSeparation = 1;
       quality.clear =
-        quality.clear && region.purity >= MIN_PROFILE_PURITY && region.margin >= 0.18 && region.primaryCluster !== null;
+        quality.clear &&
+        quality.embeddingChunkCount > 0 &&
+        quality.embeddingConsistency >= MIN_PROFILE_EMBEDDING_CONSISTENCY;
+      byId[profile.id] = quality;
     }
 
-    for (let leftIndex = 0; leftIndex < analysis.regions.length; leftIndex += 1) {
-      for (let rightIndex = leftIndex + 1; rightIndex < analysis.regions.length; rightIndex += 1) {
-        const left = analysis.regions[leftIndex];
-        const right = analysis.regions[rightIndex];
+    if (profiles.length >= 2) {
+      const regions = profiles.map((profile) => ({
+        id: profile.id,
+        samples: profile.probe
+      }));
+      const analysis = this.runDiarization(regions, { numClusters: -1, threshold: 0.5 });
 
-        if (
-          left.primaryCluster !== null &&
-          left.primaryCluster === right.primaryCluster &&
-          (left.purity >= PROFILE_COLLISION_THRESHOLD || right.purity >= PROFILE_COLLISION_THRESHOLD)
-        ) {
-          const collision = { leftId: left.id, rightId: right.id, cluster: left.primaryCluster };
-          collisions.push(collision);
-          byId[left.id].clear = false;
-          byId[right.id].clear = false;
-          byId[left.id].ambiguousWith.push(right.id);
-          byId[right.id].ambiguousWith.push(left.id);
+      for (const region of analysis.regions) {
+        const quality = byId[region.id];
+        quality.cluster = region.primaryCluster;
+        quality.purity = region.purity;
+        quality.clusterMargin = region.margin;
+        quality.clear =
+          quality.clear && region.purity >= MIN_PROFILE_PURITY && region.margin >= 0.18 && region.primaryCluster !== null;
+      }
+
+      for (let leftIndex = 0; leftIndex < analysis.regions.length; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < analysis.regions.length; rightIndex += 1) {
+          const left = analysis.regions[leftIndex];
+          const right = analysis.regions[rightIndex];
+
+          if (
+            left.primaryCluster !== null &&
+            left.primaryCluster === right.primaryCluster &&
+            (left.purity >= PROFILE_COLLISION_THRESHOLD || right.purity >= PROFILE_COLLISION_THRESHOLD)
+          ) {
+            addProfileCollision(collisions, byId, {
+              leftId: left.id,
+              rightId: right.id,
+              cluster: left.primaryCluster,
+              reason: "sherpa-cluster"
+            });
+          }
+        }
+      }
+    }
+
+    for (let leftIndex = 0; leftIndex < profiles.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < profiles.length; rightIndex += 1) {
+        const left = profiles[leftIndex];
+        const right = profiles[rightIndex];
+        const similarity = compareProfileEmbeddings(left, right);
+
+        byId[left.id].embeddingNearest = Math.max(byId[left.id].embeddingNearest ?? 0, roundScore(similarity));
+        byId[right.id].embeddingNearest = Math.max(byId[right.id].embeddingNearest ?? 0, roundScore(similarity));
+        byId[left.id].embeddingSeparation = roundScore(Math.min(byId[left.id].embeddingSeparation, 1 - similarity));
+        byId[right.id].embeddingSeparation = roundScore(Math.min(byId[right.id].embeddingSeparation, 1 - similarity));
+
+        if (similarity >= PROFILE_EMBEDDING_HARD_COLLISION_THRESHOLD) {
+          addProfileCollision(collisions, byId, {
+            leftId: left.id,
+            rightId: right.id,
+            similarity: roundScore(similarity),
+            reason: "embedding-too-similar"
+          });
+        } else if (similarity >= PROFILE_EMBEDDING_COLLISION_THRESHOLD) {
+          byId[left.id].similarWith.push(right.id);
+          byId[right.id].similarWith.push(left.id);
         }
       }
     }
@@ -310,8 +361,10 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
   }
 
   classifyWindow(window) {
-    const profiles = Array.from(this.profiles.values()).filter((profile) => profile.quality?.clear);
     const scores = Object.fromEntries(Array.from(this.profiles.keys()).map((id) => [id, 0]));
+    const profiles = Array.from(this.profiles.values()).filter(
+      (profile) => profile.quality?.clear && profile.embedding?.length
+    );
 
     if (!profiles.length) {
       return {
@@ -320,11 +373,45 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         confidence: 0,
         margin: 0,
         scores,
+        embeddingScores: scores,
+        embeddingRawScores: scores,
+        diarizationScores: scores,
+        embeddingMargin: 0,
+        diarizationMargin: 0,
         rawClusters: [],
         decisionMode: "no-profiles"
       };
     }
 
+    const allIds = Array.from(this.profiles.keys());
+    const embedding = this.scoreWithEmbeddings(window, profiles, allIds);
+    const diarization = this.scoreWithDiarization(window, profiles, allIds);
+    const combinedScores = combineHybridScores(allIds, embedding, diarization);
+    const ranked = rankScores(combinedScores);
+    const best = ranked[0];
+    const second = ranked[1];
+    const margin = best && second ? best[1] - second[1] : best ? best[1] : 0;
+    const confidence = best ? best[1] : 0;
+    const bestId = confidence > 0 ? best?.[0] ?? null : null;
+
+    return {
+      isKnown: Boolean(best && confidence >= UNKNOWN_THRESHOLD && margin >= MIN_MARGIN),
+      bestId,
+      confidence,
+      margin,
+      scores: combinedScores,
+      embeddingScores: embedding.scores,
+      embeddingRawScores: embedding.rawScores,
+      diarizationScores: diarization.scores,
+      embeddingMargin: embedding.margin,
+      diarizationMargin: diarization.margin,
+      rawClusters: diarization.rawClusters,
+      decisionMode: decisionSource(bestId, embedding, diarization)
+    };
+  }
+
+  scoreWithDiarization(window, profiles, allIds) {
+    const scores = zeroScores(allIds);
     const liveId = "__live__";
     const regions = [
       ...profiles.map((profile) => ({
@@ -333,18 +420,30 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
       })),
       { id: liveId, samples: window }
     ];
-    const analysis = this.runDiarization(regions, { numClusters: Math.max(1, profiles.length), threshold: 0.5 });
+    let analysis;
+
+    try {
+      analysis = this.runDiarization(regions, { numClusters: Math.max(1, profiles.length), threshold: 0.5 });
+    } catch (error) {
+      return {
+        scores,
+        bestId: null,
+        confidence: 0,
+        margin: 0,
+        rawClusters: [],
+        error: error.message
+      };
+    }
+
     const liveRegion = analysis.regions.find((region) => region.id === liveId);
 
     if (!liveRegion || liveRegion.primaryCluster === null) {
       return {
-        isKnown: false,
         bestId: null,
         confidence: 0,
         margin: 0,
         scores,
-        rawClusters: analysis.segments,
-        decisionMode: "no-live-cluster"
+        rawClusters: analysis.segments
       };
     }
 
@@ -354,20 +453,44 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
       }
     }
 
-    const ranked = Object.entries(scores).sort((left, right) => right[1] - left[1]);
+    const ranked = rankScores(scores);
     const best = ranked[0];
     const second = ranked[1];
     const margin = best && second ? best[1] - second[1] : best ? best[1] : 0;
     const confidence = best ? best[1] : 0;
 
     return {
-      isKnown: Boolean(best && confidence >= UNKNOWN_THRESHOLD && margin >= MIN_MARGIN),
       bestId: confidence > 0 ? best?.[0] ?? null : null,
       confidence,
       margin,
       scores,
-      rawClusters: analysis.segments,
-      decisionMode: "direct"
+      rawClusters: analysis.segments
+    };
+  }
+
+  scoreWithEmbeddings(window, profiles, allIds) {
+    const scores = zeroScores(allIds);
+    const rawScores = zeroScores(allIds);
+    const liveEmbedding = createAudioEmbedding(window, TARGET_SAMPLE_RATE);
+
+    for (const profile of profiles) {
+      const rawScore = compareLiveEmbeddingToProfile(liveEmbedding, profile);
+      rawScores[profile.id] = roundScore(rawScore);
+      scores[profile.id] = roundScore(calibrateEmbeddingScore(rawScore));
+    }
+
+    const ranked = rankScores(scores);
+    const best = ranked[0];
+    const second = ranked[1];
+    const margin = best && second ? best[1] - second[1] : best ? best[1] : 0;
+    const confidence = best ? best[1] : 0;
+
+    return {
+      bestId: confidence > 0 ? best?.[0] ?? null : null,
+      confidence,
+      margin,
+      scores,
+      rawScores
     };
   }
 
@@ -380,7 +503,7 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
     if (classified.isKnown && bestId) {
       this.lastKnownSpeakerId = bestId;
       this.lastKnownAt = now;
-      return { ...classified, decisionMode: "direct" };
+      return { ...classified, decisionMode: classified.decisionMode ?? "direct" };
     }
 
     const tentative =
@@ -399,7 +522,7 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         ...classified,
         isKnown: true,
         bestId,
-        decisionMode: "tentative"
+        decisionMode: `tentative-${classified.decisionMode ?? "unknown"}`
       };
     }
 
@@ -424,7 +547,10 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
     return {
       ...classified,
       isKnown: false,
-      decisionMode: classified.decisionMode === "direct" ? "unknown" : classified.decisionMode
+      decisionMode:
+        classified.decisionMode && !classified.decisionMode.startsWith("no-")
+          ? `unknown-${classified.decisionMode}`
+          : classified.decisionMode
     };
   }
 
@@ -451,8 +577,175 @@ function createDefaultProfileQuality(profile) {
     purity: 1,
     clusterMargin: 1,
     cluster: null,
-    ambiguousWith: []
+    ambiguousWith: [],
+    similarWith: [],
+    embeddingChunkCount: profile.embeddings?.length ?? 0,
+    embeddingConsistency: roundScore(profile.embeddingConsistency ?? 0),
+    embeddingNearest: 0,
+    embeddingSeparation: 1
   };
+}
+
+function createProfileEmbedding(samples) {
+  const chunks = createOverlappingChunks(samples, PROFILE_EMBEDDING_SECONDS, PROFILE_EMBEDDING_HOP_SECONDS)
+    .map((chunk) => createAudioEmbedding(chunk, TARGET_SAMPLE_RATE))
+    .filter((embedding) => embedding.length > 0)
+    .slice(-MAX_PROFILE_EMBEDDINGS);
+  const embedding = averageEmbeddings(chunks);
+  const consistency = embedding.length
+    ? average(chunks.map((chunkEmbedding) => normalizedCosineSimilarity(chunkEmbedding, embedding)))
+    : 0;
+
+  return {
+    embedding,
+    embeddings: chunks,
+    embeddingConsistency: consistency
+  };
+}
+
+function compareLiveEmbeddingToProfile(liveEmbedding, profile) {
+  if (!liveEmbedding.length || !profile.embedding?.length) {
+    return 0;
+  }
+
+  const profileScore = normalizedCosineSimilarity(liveEmbedding, profile.embedding);
+  const chunkScores = (profile.embeddings ?? []).map((embedding) => normalizedCosineSimilarity(liveEmbedding, embedding));
+  const topChunkScore = topKAverage(chunkScores, 3);
+
+  return clamp01(profileScore * 0.58 + topChunkScore * 0.42);
+}
+
+function compareProfileEmbeddings(left, right) {
+  if (!left.embedding?.length || !right.embedding?.length) {
+    return 0;
+  }
+
+  const averageScore = normalizedCosineSimilarity(left.embedding, right.embedding);
+  const crossScores = [];
+
+  for (const leftEmbedding of left.embeddings ?? []) {
+    for (const rightEmbedding of right.embeddings ?? []) {
+      crossScores.push(normalizedCosineSimilarity(leftEmbedding, rightEmbedding));
+    }
+  }
+
+  return clamp01(averageScore * 0.65 + topKAverage(crossScores, 5) * 0.35);
+}
+
+function createOverlappingChunks(samples, seconds, hopSeconds) {
+  const size = Math.floor(seconds * TARGET_SAMPLE_RATE);
+  const hop = Math.max(1, Math.floor(hopSeconds * TARGET_SAMPLE_RATE));
+  const chunks = [];
+
+  for (let offset = 0; offset + size <= samples.length; offset += hop) {
+    chunks.push(samples.slice(offset, offset + size));
+  }
+
+  if (!chunks.length && samples.length) {
+    chunks.push(samples);
+  }
+
+  return chunks;
+}
+
+function combineHybridScores(allIds, embedding, diarization) {
+  const scores = {};
+
+  for (const id of allIds) {
+    const embeddingScore = embedding.scores[id] ?? 0;
+    const diarizationScore = diarization.scores[id] ?? 0;
+    const agrees = embedding.bestId === id && diarization.bestId === id && embeddingScore > 0 && diarizationScore > 0;
+    const boosted = agrees ? AGREEMENT_BOOST * Math.min(1, embeddingScore + diarizationScore) : 0;
+    scores[id] = roundScore(clamp01(embeddingScore * EMBEDDING_WEIGHT + diarizationScore * DIARIZATION_WEIGHT + boosted));
+  }
+
+  return scores;
+}
+
+function decisionSource(bestId, embedding, diarization) {
+  if (!bestId) {
+    return "unknown";
+  }
+
+  const embeddingMatches = embedding.bestId === bestId && embedding.confidence > 0;
+  const diarizationMatches = diarization.bestId === bestId && diarization.confidence > 0;
+
+  if (embeddingMatches && diarizationMatches) {
+    return "hybrid";
+  }
+
+  if (embeddingMatches) {
+    return "embedding";
+  }
+
+  if (diarizationMatches) {
+    return "diarization";
+  }
+
+  return "unknown";
+}
+
+function calibrateEmbeddingScore(score) {
+  return clamp01((score - 0.58) / 0.32);
+}
+
+function normalizedCosineSimilarity(left, right) {
+  return clamp01((cosineSimilarity(left, right) + 1) / 2);
+}
+
+function zeroScores(ids) {
+  return Object.fromEntries(ids.map((id) => [id, 0]));
+}
+
+function rankScores(scores) {
+  return Object.entries(scores).sort((left, right) => right[1] - left[1]);
+}
+
+function topKAverage(values, k) {
+  if (!values.length) {
+    return 0;
+  }
+
+  return average([...values].sort((left, right) => right - left).slice(0, k));
+}
+
+function average(values) {
+  if (!values.length) {
+    return 0;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function addProfileCollision(collisions, byId, collision) {
+  const exists = collisions.some(
+    (entry) =>
+      (entry.leftId === collision.leftId && entry.rightId === collision.rightId) ||
+      (entry.leftId === collision.rightId && entry.rightId === collision.leftId)
+  );
+
+  if (!exists) {
+    collisions.push(collision);
+  }
+
+  byId[collision.leftId].clear = false;
+  byId[collision.rightId].clear = false;
+  pushUnique(byId[collision.leftId].ambiguousWith, collision.rightId);
+  pushUnique(byId[collision.rightId].ambiguousWith, collision.leftId);
+}
+
+function pushUnique(list, value) {
+  if (!list.includes(value)) {
+    list.push(value);
+  }
+}
+
+function roundScore(value) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 }
 
 async function ensureSharedArrayBuffer() {

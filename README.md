@@ -11,6 +11,7 @@ Browser-basierter technischer MVP für lokale Sprecheranteil-Erkennung ohne Tran
 - Jede Person hat eine feste Farbe; Namen und Sprechpegel nutzen diese Farbe.
 - 20 Sekunden `Stimme kennenlernen` pro Teilnehmer.
 - In-Memory-Sprecherprofile nur für die aktuelle Session.
+- Stufe-2-Erkennung: Sherpa-ONNX-Diarization plus lokale Profil-Embeddings aus den 20-Sekunden-Stimmproben.
 - Button `Zuhören und Zeiten ermitteln` startet und stoppt die Zeitmessung.
 - VAD ignoriert Stille.
 - Anzeige von aktuellem Sprecher, Scores, Unknown-State, Redezeit, Timeline, Pie Chart, Balkendiagramm und Debug-Werten.
@@ -58,4 +59,4 @@ Wichtig: Der Build benötigt `SharedArrayBuffer`. Deshalb muss die App über den
 
 ## Einschränkung
 
-Die App testet jetzt das echte Sherpa-ONNX-Browsermodell. Die derzeitige Zuordnung nutzt die Diarization-Cluster von Sherpa als lokales Vergleichssignal gegen die 20-Sekunden-Stimmproben. Das ist ein technischer MVP, keine geprüfte Sprecherbiometrie.
+Die App testet weiterhin das echte Sherpa-ONNX-Browsermodell. Stufe 2 kombiniert die Sherpa-Diarization-Cluster mit lokalen, nicht persistenten Audio-Embeddings aus den 20-Sekunden-Stimmproben. Der Browser-Build liefert aktuell keine direkte JavaScript-API, um das Sherpa-Embeddingmodell separat als Speaker-Verification-Extractor aufzurufen; deshalb bleibt Sherpa der Diarization-Kern und der Profilvergleich ist eine lokale Browser-Schicht darüber. Das ist ein technischer MVP, keine geprüfte Sprecherbiometrie.

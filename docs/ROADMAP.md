@@ -2,11 +2,12 @@
 
 ## Nächster technischer Schritt
 
-Echten Sherpa-Browserbetrieb stabilisieren:
+Stufe-2-Erkennung empirisch kalibrieren:
 
 - Browser-Ladetest in Chrome/Edge mit `crossOriginIsolated === true`.
-- Enrollment-Qualität mit echten Sherpa-Clustern sichtbar machen.
-- Schwellenwerte für `Unknown` und Profilähnlichkeit empirisch kalibrieren.
+- Testgespräche mit ähnlichen Stimmen sammeln, ohne Audio zu speichern.
+- Debugwerte `embeddingRawScores`, `embeddingScores`, `diarizationScores` und `margin` während echter Gespräche beobachten.
+- Schwellenwerte für `Unknown`, Profilähnlichkeit und `hold-last` empirisch kalibrieren.
 - Mehr-Audio-Dialog für sehr ähnliche Stimmen testen.
 - Performance bei 1 bis 7 Personen messen.
 
@@ -17,6 +18,7 @@ Echten Sherpa-Browserbetrieb stabilisieren:
 - Timeline-Segmente mit Start-/Endzeit anzeigen.
 - Unknown-Zeit separat anzeigen.
 - Testdaten mit lokalen Audio-Samples ergänzen.
+- Prüfen, ob ein zukünftiger Sherpa-Browser-Build eine direkte Speaker-Embedding-/Verification-API bereitstellt.
 
 ## Mittelfristig
 

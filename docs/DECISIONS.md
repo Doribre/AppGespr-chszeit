@@ -67,3 +67,11 @@ Grund: In echten Gespraechen sind Stimmen leiser, ueberlappen sich teilweise und
 Beim Stoppen der Zeitmessung werden bereits aufgenommene, aber noch nicht von Sherpa verarbeitete Audio-Bloecke nicht mehr verworfen. Die App zeigt `Zuhoeren wird beendet`, verarbeitet die Restwarteschlange und friert die Diagramme danach ein.
 
 Grund: Sonst fehlten die letzten Sekunden eines Gespraechs in Tortengrafik, Balken und Timeline.
+
+## 12. Stufe-2-Erkennung kombiniert Profil-Embeddings und Sherpa-Cluster
+
+Die Live-Erkennung nutzt nicht mehr nur den Sherpa-Cluster-Treffer zwischen Profilprobe und Live-Fenster. Beim `Stimme kennenlernen` werden pro Person mehrere kurze lokale Audio-Embeddings im Arbeitsspeicher erzeugt. Im Live-Betrieb berechnet die Engine fuer den rollenden Sprachkontext ein neues Embedding, vergleicht es mit allen Profilen und kombiniert diesen Score mit dem Sherpa-Diarization-Score.
+
+Grund: In echten Gespraechen erkannte die reine Cluster-Zuordnung passende Stimmen zu selten, besonders bei wechselndem Mikrofonabstand und aehnlichen Stimmen. Der zusaetzliche Profilvergleich gibt der App ein stabileres Sitzungssignal, ohne Transkription, Upload oder persistente Sprecherprofile einzufuehren.
+
+Grenze: Der aktuelle Sherpa-Browser-Wrapper exponiert das interne `embedding.onnx` nicht als separate JavaScript-Speaker-Verification-API. Stufe 2 bleibt deshalb eine lokale Browser-Schicht ueber der offiziellen Sherpa-Diarization-Runtime.

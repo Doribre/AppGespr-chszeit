@@ -1,12 +1,12 @@
 # Projektkontext
 
-Stand: 2026-06-28
+Stand: 2026-06-29
 
 ## Ziel
 
 Dieses Repository enthält Schwätzometer, einen browserbasierten technischen MVP zur Anzeige von Gesprächsanteilen in einem laufenden Gespräch.
 
-Die App läuft lokal im Browser, verwendet Mikrofon-Audio, bildet temporäre Sprecherprofile aus `Stimme kennenlernen` und zeigt danach an, wer ungefähr welchen Redeanteil hat. Sie nutzt Sherpa-ONNX Browser-WASM und transkribiert nicht.
+Die App läuft lokal im Browser, verwendet Mikrofon-Audio, bildet temporäre Sprecherprofile aus `Stimme kennenlernen` und zeigt danach an, wer ungefähr welchen Redeanteil hat. Sie nutzt Sherpa-ONNX Browser-WASM, ergänzt in Stufe 2 lokale Session-Embeddings für den Profilvergleich und transkribiert nicht.
 
 ## Anforderungen
 
@@ -17,6 +17,7 @@ Die App läuft lokal im Browser, verwendet Mikrofon-Audio, bildet temporäre Spr
 - Jede Person hat eine feste Farbe; Namen und Sprechpegel nutzen diese Farbe.
 - Pro Teilnehmer 20 Sekunden `Stimme kennenlernen`.
 - Speaker-Profile nur im Arbeitsspeicher der aktuellen Session.
+- Profilvergleich in Stufe 2 über lokale Audio-Embeddings plus Sherpa-Diarization-Scores.
 - Keine Transkription.
 - Kein Audio-Upload.
 - Keine Cloud-APIs.

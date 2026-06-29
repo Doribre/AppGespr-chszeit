@@ -1,6 +1,6 @@
 # Sherpa-ONNX Browser Build
 
-Stand: 2026-06-28
+Stand: 2026-06-29
 
 ## Aktiver Stand
 
@@ -19,6 +19,12 @@ Quelle:
 - Release: `v1.13.3`
 - Asset: `sherpa-onnx-wasm-simd-v1.13.3-speaker-diarization.tar.bz2`
 - Download-SHA256: `BD9645354E5EB7D261DC5B8227E46937615A53571250F3E7EA11D2AF4899E3AC`
+
+## Nutzung in Stufe 2
+
+Die App lädt weiterhin diese offizielle Browser-Diarization-Runtime. Der JavaScript-Wrapper stellt aktuell `createOfflineSpeakerDiarization` bereit, aber keine separate Speaker-Embedding- oder Speaker-Verification-API für `embedding.onnx`.
+
+Deshalb nutzt Stufe 2 Sherpa-ONNX für die lokale Diarization und ergänzt darüber einen lokalen Browser-Profilvergleich: Aus `Stimme kennenlernen` entstehen mehrere Session-Embeddings pro Person, die nur im Arbeitsspeicher bleiben. Live-Fenster werden gegen diese Profile verglichen und mit dem Sherpa-Diarization-Score kombiniert.
 
 ## Warum nicht das npm-Node-WASM-Paket?
 

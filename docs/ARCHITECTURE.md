@@ -10,6 +10,7 @@ Browser UI
   -> SpeakerShareEngine interface
   -> SherpaOnnxWasmSpeakerEngine
   -> sherpa-onnx Browser-WASM Diarization
+  -> lokale Session-Profil-Embeddings
   -> UI-State: Sprecher, Scores, Zeiten, Timeline, Charts
 ```
 
@@ -19,7 +20,7 @@ Browser UI
 - `src/app.js`: UI-State, Stimme-kennenlernen-Flow, Live-Flow, Rendering.
 - `src/audio/engine.js`: Engine-Interface und `SherpaOnnxWasmSpeakerEngine`.
 - `src/audio/vad.js`: Energie-VAD für UI- und Aufnahmefenster.
-- `src/audio/features.js`: ältere lokale Feature-Helfer; nicht aktive Speaker-Engine.
+- `src/audio/features.js`: lokale Audio-Feature- und Embedding-Helfer für den Stufe-2-Profilvergleich.
 - `src/charts.js`: Pie-Chart, Balkendiagramm und Zeitformatierung.
 - `src/styles.css`: Layout und visuelle Gestaltung.
 - `server.mjs`: lokaler HTTP-Server für `127.0.0.1` mit COOP/COEP.
@@ -53,16 +54,18 @@ Die `.data`-Datei enthält die Sherpa-Modelldateien `embedding.onnx` und `segmen
 
 ## Sprechervergleich
 
-Die App transkribiert nicht. Sie nutzt Sherpa-Diarization lokal:
+Die App transkribiert nicht. Stufe 2 nutzt zwei lokale Signale:
 
 - Aufnahme wird auf 16 kHz gebracht.
 - VAD entfernt Stille.
 - Pro Person werden Sprachsamples aus `Stimme kennenlernen` gesammelt.
-- Sherpa segmentiert kombinierte Probe- und Live-Fenster in Sprechercluster.
-- Live-Fenster werden dem Profil zugeordnet, dessen Probe im gleichen Sherpa-Cluster liegt.
+- Daraus entstehen mehrere kurze, nicht persistente Audio-Embeddings pro Person.
+- Sherpa segmentiert kombinierte Probe- und Live-Fenster weiterhin in Sprechercluster.
+- Live-Fenster werden gegen die Profil-Embeddings verglichen.
+- Die Engine kombiniert Profil-Embedding-Score und Sherpa-Diarization-Score zu einem finalen lokalen Sprecher-Score.
 - Unsichere Fenster werden als `Unknown` gezählt.
 
-Das ist ein MVP-Ansatz um das spätere Browsermodell real zu testen.
+Der gebündelte Sherpa-Browser-Build enthält zwar `embedding.onnx`, stellt aber in dieser Wrapper-Datei keine separate JavaScript-Speaker-Verification-API bereit. Deshalb bleibt Sherpa der Diarization-Kern; der zusätzliche Profilvergleich ist eine Browser-Schicht, die später durch eine native Android-/iOS-Embedding-Engine ersetzt werden kann.
 
 ## Server
 
