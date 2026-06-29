@@ -380,6 +380,37 @@ h2 {
   color: #9a5b00;
 }
 
+.status-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eef1f4;
+  color: #5e6a75;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.3rem 0.62rem;
+  white-space: nowrap;
+}
+
+.status-badge.is-ready {
+  background: #e5f5ec;
+  color: #1e7942;
+}
+
+.status-badge.is-recording {
+  background: #e8f2ff;
+  color: #1f6fba;
+}
+
+.status-badge.is-busy {
+  background: #eef1ff;
+  color: #4550a0;
+}
+
+.status-badge.is-warning {
+  background: #fff1d6;
+  color: #9a5b00;
+}
+
 .icon-button {
   width: 32px;
   height: 32px;
@@ -393,6 +424,50 @@ h2 {
   background: #f8fafc;
   padding: 14px;
   font-weight: 700;
+}
+
+.enrollment-coach {
+  border: 1px solid #d7e0ea;
+  border-radius: 7px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.coach-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.coach-topline span {
+  color: #66717d;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.coach-topline strong {
+  min-width: 54px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #17202a;
+  padding: 0.28rem 0.58rem;
+  text-align: center;
+}
+
+.coach-title {
+  color: #17202a;
+  font-size: 1.18rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.coach-help {
+  margin: 8px 0 0;
+  color: #56626e;
+  line-height: 1.4;
 }
 
 .level-block {
@@ -448,6 +523,107 @@ h2 {
   height: 100%;
   background: #27ae60;
   transition: width 120ms linear;
+}
+
+.enrollment-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.progress-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.progress-label span {
+  color: #66717d;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.progress-label strong {
+  color: #263643;
+  font-size: 0.84rem;
+}
+
+.enrollment-progress-grid .meter {
+  margin: 0;
+}
+
+.speech-meter {
+  background: #edf2f7;
+}
+
+.enrollment-checklist {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.enrollment-checklist li {
+  position: relative;
+  min-height: 28px;
+  padding: 6px 8px 6px 30px;
+  border: 1px solid #e0e6ec;
+  border-radius: 7px;
+  background: #fbfcfd;
+  color: #44515d;
+  font-size: 0.88rem;
+  line-height: 1.25;
+}
+
+.enrollment-checklist li::before {
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #aeb8c2;
+  border-radius: 50%;
+  color: #ffffff;
+  content: "";
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.enrollment-checklist li.is-ok {
+  border-color: #cfe9da;
+  background: #f1fbf5;
+  color: #1e7942;
+}
+
+.enrollment-checklist li.is-ok::before {
+  border-color: #1e7942;
+  background: #1e7942;
+  content: "✓";
+}
+
+.enrollment-checklist li.is-warning {
+  border-color: #f2d39a;
+  background: #fff8e8;
+  color: #8a5500;
+}
+
+.enrollment-checklist li.is-warning::before {
+  border-color: #d29322;
+  background: #d29322;
+  content: "!";
+}
+
+.enrollment-checklist li.is-busy::before {
+  border-color: #4550a0;
+  background: #4550a0;
+  content: "...";
 }
 
 .fineprint {
@@ -722,6 +898,7 @@ canvas {
   .workspace,
   .live-grid,
   .chart-wrap,
+  .enrollment-progress-grid,
   .debug-grid {
     grid-template-columns: 1fr;
   }

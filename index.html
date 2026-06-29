@@ -84,10 +84,18 @@
           <div class="panel-header">
             <div>
               <h2>Stimme kennenlernen</h2>
-              <p>Der Name kommt aus dem Textfeld. Die Person spricht 20 Sekunden, damit Schwätzometer die Stimme zuordnen kann.</p>
+              <p>Schwätzometer führt jede Person einzeln durch die Stimmprobe und sagt sofort, ob genug verwertbare Stimme ankommt.</p>
             </div>
+            <span id="enrollmentStateBadge" class="status-badge">Wartet</span>
           </div>
-          <div id="enrollmentPrompt" class="prompt">Mikrofon starten und Teilnehmer anlegen.</div>
+          <div id="enrollmentCoach" class="enrollment-coach">
+            <div class="coach-topline">
+              <span id="enrollmentVoiceFeedback">Bereit zum Einrichten</span>
+              <strong id="enrollmentTimer">--</strong>
+            </div>
+            <div id="enrollmentPrompt" class="coach-title">Mikrofon starten und Teilnehmer anlegen.</div>
+            <p id="enrollmentHelp" class="coach-help">Die App hört nur auf die Stimme, sie schreibt keine Wörter mit.</p>
+          </div>
           <div class="level-block" aria-label="Sprechpegel">
             <div class="level-header">
               <span>Sprechpegel</span>
@@ -97,12 +105,30 @@
               <div id="enrollmentLevelBar" class="level-fill"></div>
             </div>
           </div>
-          <div class="meter" aria-label="Fortschritt Stimme kennenlernen">
-            <div id="enrollmentProgress" class="meter-fill"></div>
+          <div class="enrollment-progress-grid">
+            <div>
+              <div class="progress-label">
+                <span>Zeit</span>
+                <strong id="enrollmentTimeText">0 / 20s</strong>
+              </div>
+              <div class="meter" aria-label="Fortschritt Stimme kennenlernen">
+                <div id="enrollmentProgress" class="meter-fill"></div>
+              </div>
+            </div>
+            <div>
+              <div class="progress-label">
+                <span>Verwertbare Stimme</span>
+                <strong id="enrollmentSpeechText">0 / 12s</strong>
+              </div>
+              <div class="meter speech-meter" aria-label="Verwertbare Stimme">
+                <div id="enrollmentSpeechProgress" class="meter-fill"></div>
+              </div>
+            </div>
           </div>
+          <ul id="enrollmentChecklist" class="enrollment-checklist" aria-live="polite"></ul>
           <div class="control-row">
             <button id="startEnrollmentButton" class="primary" type="button" disabled>Stimme kennenlernen</button>
-            <button id="skipEnrollmentButton" type="button" disabled>Aufnahme abschließen</button>
+            <button id="skipEnrollmentButton" type="button" disabled>Jetzt prüfen</button>
           </div>
           <p id="enrollmentDetails" class="fineprint">Stimmprofile werden nur im Arbeitsspeicher gehalten.</p>
         </section>

@@ -2,6 +2,9 @@ import { colorForIndex, drawPieChart, formatDuration } from "./charts.js";
 import { SherpaOnnxWasmSpeakerEngine } from "./audio/engine.js";
 
 const ENROLLMENT_SECONDS = 20;
+const ENROLLMENT_MIN_SPEECH_SECONDS = 12;
+const ENROLLMENT_LOW_LEVEL = 0.012;
+const ENROLLMENT_GOOD_LEVEL = 0.026;
 const MAX_PARTICIPANTS = 7;
 const MIN_PARTICIPANTS = 1;
 const UNKNOWN_ID = "unknown";
@@ -17,8 +20,16 @@ const elements = {
   participantList: document.querySelector("#participantList"),
   startEnrollmentButton: document.querySelector("#startEnrollmentButton"),
   skipEnrollmentButton: document.querySelector("#skipEnrollmentButton"),
+  enrollmentStateBadge: document.querySelector("#enrollmentStateBadge"),
   enrollmentPrompt: document.querySelector("#enrollmentPrompt"),
+  enrollmentHelp: document.querySelector("#enrollmentHelp"),
+  enrollmentTimer: document.querySelector("#enrollmentTimer"),
+  enrollmentVoiceFeedback: document.querySelector("#enrollmentVoiceFeedback"),
+  enrollmentTimeText: document.querySelector("#enrollmentTimeText"),
+  enrollmentSpeechText: document.querySelector("#enrollmentSpeechText"),
   enrollmentProgress: document.querySelector("#enrollmentProgress"),
+  enrollmentSpeechProgress: document.querySelector("#enrollmentSpeechProgress"),
+  enrollmentChecklist: document.querySelector("#enrollmentChecklist"),
   enrollmentLevelBar: document.querySelector("#enrollmentLevelBar"),
   enrollmentLevelName: document.querySelector("#enrollmentLevelName"),
   enrollmentDetails: document.querySelector("#enrollmentDetails"),
@@ -54,9 +65,12 @@ const state = {
   engineInfo: null,
   participants: [],
   activeEnrollmentId: null,
+  checkingEnrollmentId: null,
   enrollmentStartedAt: 0,
   enrollmentSamples: [],
   enrollmentLevel: 0,
+  enrollmentSpeechMs: 0,
+  enrollmentLastRms: 0,
   live: false,
   liveStartedAt: 0,
   liveAccumulatedMs: 0,
@@ -179,7 +193,14 @@ function handleAudioProcess(event) {
 
   if (state.activeEnrollmentId) {
     state.enrollmentSamples.push(samples);
-    state.enrollmentLevel = smoothLevel(state.enrollmentLevel, computeRms(samples));
+    const rms = computeRms(samples);
+    state.enrollmentLastRms = rms;
+    state.enrollmentLevel = smoothLevel(state.enrollmentLevel, rms);
+
+    if (rms >= ENROLLMENT_LOW_LEVEL) {
+      state.enrollmentSpeechMs += (samples.length / (state.audioContext?.sampleRate ?? 48000)) * 1000;
+    }
+
     updateEnrollmentProgress();
   }
 
@@ -266,10 +287,14 @@ function startEnrollment() {
   }
 
   state.activeEnrollmentId = next.id;
+  state.checkingEnrollmentId = null;
   state.enrollmentStartedAt = performance.now();
   state.enrollmentSamples = [];
   state.enrollmentLevel = 0;
+  state.enrollmentSpeechMs = 0;
+  state.enrollmentLastRms = 0;
   elements.enrollmentProgress.style.width = "0%";
+  elements.enrollmentSpeechProgress.style.width = "0%";
   next.enrolling = true;
   elements.skipEnrollmentButton.disabled = false;
   render();
@@ -286,10 +311,13 @@ async function stopEnrollment() {
   elements.skipEnrollmentButton.disabled = true;
 
   const samples = concatenateSamples(state.enrollmentSamples);
+  state.checkingEnrollmentId = participant.id;
   state.activeEnrollmentId = null;
   state.enrollmentStartedAt = 0;
   state.enrollmentSamples = [];
   state.enrollmentLevel = 0;
+  state.enrollmentLastRms = 0;
+  render();
 
   try {
     const result = await state.engine.enrollParticipant(participant, samples, state.audioContext.sampleRate);
@@ -309,6 +337,9 @@ async function stopEnrollment() {
     participant.enrolled = false;
     participant.needsMoreAudio = true;
     elements.enrollmentDetails.textContent = error.message;
+  } finally {
+    state.checkingEnrollmentId = null;
+    state.enrollmentSpeechMs = 0;
   }
 
   render();
@@ -318,15 +349,14 @@ function updateEnrollmentProgress() {
   const elapsed = (performance.now() - state.enrollmentStartedAt) / 1000;
   const progress = Math.min(1, elapsed / ENROLLMENT_SECONDS);
   elements.enrollmentProgress.style.width = `${progress * 100}%`;
-  renderEnrollmentLevel();
+  elements.enrollmentSpeechProgress.style.width = `${Math.min(
+    100,
+    (enrollmentSpeechSeconds() / ENROLLMENT_MIN_SPEECH_SECONDS) * 100
+  )}%`;
+  renderEnrollmentStatus();
 
   if (elapsed >= ENROLLMENT_SECONDS) {
     stopEnrollment();
-  } else {
-    const participant = state.participants.find((entry) => entry.id === state.activeEnrollmentId);
-    elements.enrollmentPrompt.textContent = `${participant.name}: 20 Sekunden Stimme kennenlernen (${Math.ceil(
-      ENROLLMENT_SECONDS - elapsed
-    )}s).`;
   }
 }
 
@@ -451,8 +481,11 @@ function resetSession() {
   state.engine.reset();
   state.participants = [];
   state.activeEnrollmentId = null;
+  state.checkingEnrollmentId = null;
   state.enrollmentSamples = [];
   state.enrollmentLevel = 0;
+  state.enrollmentSpeechMs = 0;
+  state.enrollmentLastRms = 0;
   state.liveAccumulatedMs = 0;
   state.liveStartedAt = 0;
   state.processingLive = false;
@@ -466,6 +499,7 @@ function resetSession() {
   participantCounter = 0;
   addParticipant("Person 1");
   elements.enrollmentProgress.style.width = "0%";
+  elements.enrollmentSpeechProgress.style.width = "0%";
   elements.enrollmentDetails.textContent = "Stimmprofile werden nur im Arbeitsspeicher gehalten.";
   render();
 }
@@ -478,7 +512,7 @@ function render() {
 function renderDynamicSections() {
   renderControls();
   renderGuide();
-  renderEnrollmentLevel();
+  renderEnrollmentStatus();
   renderLiveStatus();
   renderScores();
   renderChart();
@@ -532,15 +566,25 @@ function renderParticipants() {
 
 function renderControls() {
   const engineReady = Boolean(state.engineInfo?.ready);
-  const canEnroll = Boolean(engineReady && state.mediaStream && state.participants.some((participant) => !participant.enrolled));
+  const next = state.participants.find((participant) => !participant.enrolled);
+  const checkingEnrollment = Boolean(state.checkingEnrollmentId);
+  const canEnroll = Boolean(engineReady && state.mediaStream && next && !checkingEnrollment);
   elements.micButton.disabled = Boolean(state.mediaStream) || !engineReady;
   elements.micButton.textContent = state.mediaStream ? "Mikrofon aktiv" : "Mikrofon starten";
   elements.micButton.classList.toggle("state-ok", Boolean(state.mediaStream));
   elements.participantCapacity.textContent = `${state.participants.length}/${MAX_PARTICIPANTS}`;
   elements.startEnrollmentButton.disabled = !canEnroll || Boolean(state.activeEnrollmentId) || state.live;
-  elements.addParticipantButton.disabled = state.participants.length >= MAX_PARTICIPANTS || state.live;
+  elements.startEnrollmentButton.textContent = state.activeEnrollmentId
+    ? "Stimmprobe läuft"
+    : checkingEnrollment
+      ? "Profil wird geprüft"
+      : next?.needsMoreAudio
+        ? "Mehr Stimme aufnehmen"
+        : "Stimme kennenlernen starten";
+  elements.skipEnrollmentButton.textContent = state.activeEnrollmentId ? "Jetzt prüfen" : "Jetzt prüfen";
+  elements.addParticipantButton.disabled = state.participants.length >= MAX_PARTICIPANTS || state.live || checkingEnrollment;
   elements.listenToggleButton.disabled =
-    state.finalizingLive || ((!allEnrolled() || Boolean(state.activeEnrollmentId)) && !state.live);
+    state.finalizingLive || checkingEnrollment || ((!allEnrolled() || Boolean(state.activeEnrollmentId)) && !state.live);
   elements.listenToggleButton.textContent = state.finalizingLive
     ? "Zuhören wird beendet"
     : state.live
@@ -548,12 +592,7 @@ function renderControls() {
       : "Zuhören und Zeiten ermitteln";
   elements.listenToggleButton.classList.toggle("state-danger", state.live || state.finalizingLive);
 
-  if (!state.activeEnrollmentId) {
-    const next = state.participants.find((participant) => !participant.enrolled);
-    elements.enrollmentPrompt.textContent = next
-      ? `${next.name}: Name im Textfeld prüfen, dann 20 Sekunden Stimme kennenlernen.`
-      : "Alle Profile sind bereit.";
-  }
+  elements.skipEnrollmentButton.disabled = !state.activeEnrollmentId;
 }
 
 function renderGuide() {
@@ -572,12 +611,19 @@ function renderGuide() {
     return;
   }
 
+  if (state.checkingEnrollmentId) {
+    const participant = state.participants.find((entry) => entry.id === state.checkingEnrollmentId);
+    elements.nextAction.textContent = `${participant?.name ?? "Die Stimme"} wird geprüft. Danach zeigt Schwätzometer direkt, ob das Profil reicht oder mehr Stimme nötig ist.`;
+    renderOptions(["Kurz warten", "Ergebnis im Feld Stimme kennenlernen ansehen", canAdd ? "Danach weitere Person hinzufügen" : null]);
+    return;
+  }
+
   if (state.activeEnrollmentId) {
     const participant = state.participants.find((entry) => entry.id === state.activeEnrollmentId);
     const addHint =
       state.participants.length < MAX_PARTICIPANTS ? " Bei Bedarf kannst du währenddessen noch eine Person hinzufügen." : "";
-    elements.nextAction.textContent = `${participant?.name ?? "Die aktuelle Person"} spricht gerade, damit Schwätzometer die Stimme kennenlernt.${addHint}`;
-    renderOptions(["Sprechen lassen", "Aufnahme vorzeitig abschließen", canAdd ? "Weitere Person hinzufügen" : null]);
+    elements.nextAction.textContent = `${participant?.name ?? "Die aktuelle Person"} spricht jetzt. Achte auf „Pegel passt“ und auf den Balken „Verwertbare Stimme“.${addHint}`;
+    renderOptions(["Weiter sprechen lassen", "Jetzt prüfen", canAdd ? "Weitere Person hinzufügen" : null]);
     return;
   }
 
@@ -587,9 +633,9 @@ function renderGuide() {
     const addHint =
       state.participants.length < MAX_PARTICIPANTS ? " Du kannst vorher oder danach weitere Personen hinzufügen." : "";
     elements.nextAction.textContent = next.needsMoreAudio
-      ? `${next.name}: Schwätzometer braucht noch mehr Stimme, weil das Profil noch nicht klar genug ist.${addHint}`
-      : `${next.name}: 20 Sekunden Stimme kennenlernen.${addHint}`;
-    renderOptions(["Namen im Textfeld prüfen", "Stimme kennenlernen", canAdd ? "Weitere Person hinzufügen" : null]);
+      ? `${next.name}: Bitte noch einmal Stimme aufnehmen. Die App zeigt währenddessen, ob der Pegel passt.${addHint}`
+      : `${next.name}: Namen prüfen, dann Stimme kennenlernen starten. Die Person spricht normal, bis der Fortschritt reicht.${addHint}`;
+    renderOptions(["Namen im Textfeld prüfen", "Stimme kennenlernen starten", canAdd ? "Weitere Person hinzufügen" : null]);
     return;
   }
 
@@ -644,16 +690,16 @@ function formatEnrollmentResult(participant, result) {
   const seconds = Math.round(result.speechSeconds ?? participant.profileSpeechSeconds ?? 0);
 
   if (result.clear && result.profileAudit?.clear) {
-    return `${participant.name}: Stimme klar genug (${seconds}s erkannt, ${result.speechWindows} Sprachfenster, ${Math.round(
+    return `${participant.name}: Fertig. Die Stimme ist klar genug (${seconds}s verwertbare Stimme, ${result.speechWindows} Sprachfenster, ${Math.round(
       result.latencyMs
-    )} ms Verarbeitung).`;
+    )} ms Prüfung).`;
   }
 
   const needed = Math.ceil(result.neededSeconds ?? participant.profileQuality?.neededSeconds ?? 0);
-  const moreAudio = needed > 0 ? ` Noch etwa ${needed}s zusätzliche Stimme nötig.` : " Mehr Stimme nötig.";
+  const moreAudio = needed > 0 ? ` Bitte noch etwa ${needed}s zusätzliche Stimme aufnehmen.` : " Bitte noch mehr Stimme aufnehmen.";
   const ambiguous = ambiguousNames(participant).join(", ");
-  const similar = ambiguous ? ` Zu ähnlich mit: ${ambiguous}.` : "";
-  return `${participant.name}: Profil noch nicht klar genug (${seconds}s erkannt).${moreAudio}${similar}`;
+  const similar = ambiguous ? ` Die Stimme ist noch zu ähnlich mit: ${ambiguous}.` : "";
+  return `${participant.name}: Noch nicht startklar (${seconds}s verwertbare Stimme erkannt).${moreAudio}${similar}`;
 }
 
 function showMoreVoiceDialog(audit) {
@@ -664,14 +710,14 @@ function showMoreVoiceDialog(audit) {
       continue;
     }
 
-    lines.push(`- ${participant.name}: ${profileStatusText(participant)}`);
+    lines.push(`${participant.name}: ${profileStatusText(participant)}`);
   }
 
   if (!lines.length) {
     return;
   }
 
-  window.alert(`Schwätzometer braucht noch mehr Stimme, bevor die Zeitmessung zuverlässig startet.\n\n${lines.join("\n")}`);
+  elements.enrollmentDetails.textContent = `Noch nicht startklar. ${lines.join(" ")}`;
 }
 
 function profileStatusText(participant) {
@@ -705,16 +751,183 @@ function ambiguousNames(participant) {
     .filter(Boolean);
 }
 
-function renderEnrollmentLevel() {
-  const participant = state.participants.find((entry) => entry.id === state.activeEnrollmentId);
+function renderEnrollmentStatus() {
+  const active = state.participants.find((entry) => entry.id === state.activeEnrollmentId);
+  const checking = state.participants.find((entry) => entry.id === state.checkingEnrollmentId);
+  const next = state.participants.find((participant) => !participant.enrolled);
+  const participant = active ?? checking ?? next;
   const color = participant ? colorForParticipant(participant.id) : "#9aa5b1";
-  const level = participant ? state.enrollmentLevel : 0;
+  const level = active ? state.enrollmentLevel : 0;
+  const elapsed = active ? enrollmentElapsedSeconds() : 0;
+  const speechSeconds = active ? enrollmentSpeechSeconds() : 0;
+  const timeProgress = active ? Math.min(1, elapsed / ENROLLMENT_SECONDS) : 0;
+  const speechProgress = active ? Math.min(1, speechSeconds / ENROLLMENT_MIN_SPEECH_SECONDS) : 0;
+  const remaining = Math.max(0, ENROLLMENT_SECONDS - elapsed);
 
   elements.enrollmentLevelName.textContent = participant ? participant.name : "wartet";
   elements.enrollmentLevelName.style.color = color;
   elements.enrollmentLevelBar.style.width = `${Math.round(level * 100)}%`;
   elements.enrollmentLevelBar.style.background = color;
+  elements.enrollmentProgress.style.width = `${Math.round(timeProgress * 100)}%`;
+  elements.enrollmentSpeechProgress.style.width = `${Math.round(speechProgress * 100)}%`;
   elements.enrollmentProgress.style.background = participant ? color : "#27ae60";
+  elements.enrollmentSpeechProgress.style.background = speechProgress >= 1 ? "#1e7942" : color;
+  elements.enrollmentTimeText.textContent = active ? `${Math.floor(elapsed)} / ${ENROLLMENT_SECONDS}s` : `0 / ${ENROLLMENT_SECONDS}s`;
+  elements.enrollmentSpeechText.textContent = active
+    ? `${Math.floor(speechSeconds)} / ${ENROLLMENT_MIN_SPEECH_SECONDS}s`
+    : `0 / ${ENROLLMENT_MIN_SPEECH_SECONDS}s`;
+
+  if (checking) {
+    elements.enrollmentStateBadge.textContent = "Prüft";
+    elements.enrollmentStateBadge.className = "status-badge is-busy";
+    elements.enrollmentTimer.textContent = "...";
+    elements.enrollmentVoiceFeedback.textContent = "Profil wird berechnet";
+    elements.enrollmentVoiceFeedback.style.color = color;
+    elements.enrollmentPrompt.textContent = `${checking.name}: Stimme wird geprüft.`;
+    elements.enrollmentHelp.textContent =
+      "Schwätzometer vergleicht die Stimmprobe lokal mit den anderen Profilen. Gleich steht hier, ob es reicht.";
+    renderEnrollmentChecklist([
+      { label: "Aufnahme abgeschlossen", ok: true },
+      { label: "Profil wird lokal erstellt", ok: false, busy: true },
+      { label: "Danach Ergebnis lesen", ok: false }
+    ]);
+    return;
+  }
+
+  if (active) {
+    const feedback = enrollmentLevelFeedback();
+    elements.enrollmentStateBadge.textContent = "Nimmt auf";
+    elements.enrollmentStateBadge.className = "status-badge is-recording";
+    elements.enrollmentTimer.textContent = `${Math.ceil(remaining)}s`;
+    elements.enrollmentVoiceFeedback.textContent = feedback.label;
+    elements.enrollmentVoiceFeedback.style.color = feedback.color;
+    elements.enrollmentPrompt.textContent = `${active.name} spricht jetzt.`;
+    elements.enrollmentHelp.textContent =
+      speechProgress >= 1
+        ? "Genug verwertbare Stimme ist da. Du kannst weiterlaufen lassen oder direkt prüfen."
+        : "Bitte normal und möglichst durchgehend sprechen. Die Wörter sind egal, es wird nichts transkribiert.";
+    renderEnrollmentChecklist([
+      { label: `${active.name} ist ausgewählt`, ok: true },
+      { label: feedback.checkLabel, ok: feedback.ok, warning: feedback.warning },
+      { label: `${Math.floor(speechSeconds)}s verwertbare Stimme gesammelt`, ok: speechProgress >= 1 },
+      { label: "Bei genug Stimme auf „Jetzt prüfen“ klicken", ok: false }
+    ]);
+    return;
+  }
+
+  if (!state.engineInfo?.ready) {
+    elements.enrollmentStateBadge.textContent = "Wartet";
+    elements.enrollmentStateBadge.className = "status-badge";
+    elements.enrollmentTimer.textContent = "--";
+    elements.enrollmentVoiceFeedback.textContent = "Engine lädt";
+    elements.enrollmentVoiceFeedback.style.color = "#5d6975";
+    elements.enrollmentPrompt.textContent = "Sherpa-ONNX wird geladen.";
+    elements.enrollmentHelp.textContent = "Sobald die Engine bereit ist, geht es mit Mikrofon und Namen weiter.";
+    renderEnrollmentChecklist([
+      { label: "Engine bereit", ok: false, busy: true },
+      { label: "Mikrofon freigeben", ok: false },
+      { label: "Erste Stimme kennenlernen", ok: false }
+    ]);
+    return;
+  }
+
+  if (!state.mediaStream) {
+    elements.enrollmentStateBadge.textContent = "Wartet";
+    elements.enrollmentStateBadge.className = "status-badge";
+    elements.enrollmentTimer.textContent = "--";
+    elements.enrollmentVoiceFeedback.textContent = "Mikrofon fehlt";
+    elements.enrollmentVoiceFeedback.style.color = "#5d6975";
+    elements.enrollmentPrompt.textContent = "Zuerst Mikrofon starten.";
+    elements.enrollmentHelp.textContent = "Danach Namen eintippen und pro Person die Stimme kennenlernen lassen.";
+    renderEnrollmentChecklist([
+      { label: "Engine bereit", ok: true },
+      { label: "Mikrofon freigeben", ok: false },
+      { label: "Namen prüfen", ok: false }
+    ]);
+    return;
+  }
+
+  if (next) {
+    elements.enrollmentStateBadge.textContent = next.needsMoreAudio ? "Mehr nötig" : "Bereit";
+    elements.enrollmentStateBadge.className = next.needsMoreAudio ? "status-badge is-warning" : "status-badge is-ready";
+    elements.enrollmentTimer.textContent = "20s";
+    elements.enrollmentVoiceFeedback.textContent = next.needsMoreAudio ? "Noch nicht klar genug" : "Bereit für Stimmprobe";
+    elements.enrollmentVoiceFeedback.style.color = color;
+    elements.enrollmentPrompt.textContent = next.needsMoreAudio
+      ? `${next.name}: bitte noch einmal Stimme aufnehmen.`
+      : `${next.name}: Namen prüfen, dann Stimmprobe starten.`;
+    elements.enrollmentHelp.textContent = next.needsMoreAudio
+      ? profileStatusText(next)
+      : "Die Person muss nur normal sprechen. Namen kommen aus dem Textfeld, nicht aus Sprache.";
+    renderEnrollmentChecklist([
+      { label: "Mikrofon aktiv", ok: true },
+      { label: `${next.name} ist als nächste Person dran`, ok: true },
+      { label: "Stimmprobe starten", ok: false }
+    ]);
+    return;
+  }
+
+  elements.enrollmentStateBadge.textContent = "Fertig";
+  elements.enrollmentStateBadge.className = "status-badge is-ready";
+  elements.enrollmentTimer.textContent = "ok";
+  elements.enrollmentVoiceFeedback.textContent = "Alle Profile bereit";
+  elements.enrollmentVoiceFeedback.style.color = "#1e7942";
+  elements.enrollmentPrompt.textContent = "Alle Stimmen sind kennengelernt.";
+  elements.enrollmentHelp.textContent = "Du kannst jetzt die Zeitmessung starten oder vorher weitere Personen hinzufügen.";
+  renderEnrollmentChecklist([
+    { label: "Alle sichtbaren Personen haben ein Profil", ok: true },
+    { label: "Zuhören und Zeiten ermitteln ist bereit", ok: true }
+  ]);
+}
+
+function renderEnrollmentChecklist(items) {
+  elements.enrollmentChecklist.replaceChildren(
+    ...items.map((item) => {
+      const entry = document.createElement("li");
+      entry.className = item.ok ? "is-ok" : item.warning ? "is-warning" : item.busy ? "is-busy" : "";
+      entry.textContent = item.label;
+      return entry;
+    })
+  );
+}
+
+function enrollmentElapsedSeconds() {
+  return state.activeEnrollmentId && state.enrollmentStartedAt ? (performance.now() - state.enrollmentStartedAt) / 1000 : 0;
+}
+
+function enrollmentSpeechSeconds() {
+  return state.enrollmentSpeechMs / 1000;
+}
+
+function enrollmentLevelFeedback() {
+  const rms = state.enrollmentLastRms;
+
+  if (rms >= ENROLLMENT_GOOD_LEVEL) {
+    return {
+      label: "Pegel passt",
+      checkLabel: "Stimme kommt klar an",
+      color: "#1e7942",
+      ok: true
+    };
+  }
+
+  if (rms >= ENROLLMENT_LOW_LEVEL) {
+    return {
+      label: "Stimme erkannt",
+      checkLabel: "Stimme erkannt, etwas lauter ist besser",
+      color: "#9a5b00",
+      ok: true,
+      warning: true
+    };
+  }
+
+  return {
+    label: "Zu leise oder Pause",
+    checkLabel: "Bitte näher ans Mikrofon oder weiter sprechen",
+    color: "#b42318",
+    ok: false,
+    warning: true
+  };
 }
 
 function renderLiveStatus() {

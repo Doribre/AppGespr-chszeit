@@ -10,6 +10,7 @@ Browser-basierter technischer MVP für lokale Sprecheranteil-Erkennung ohne Tran
 - Namen werden per Tastatur eingegeben, nicht per Sprache erkannt.
 - Jede Person hat eine feste Farbe; Namen und Sprechpegel nutzen diese Farbe.
 - 20 Sekunden `Stimme kennenlernen` pro Teilnehmer.
+- Die Stimme-kennenlernen-Phase zeigt direkt Countdown, Pegel-Feedback, verwertbare Stimme und Ergebnis der Profilprüfung.
 - In-Memory-Sprecherprofile nur für die aktuelle Session.
 - Stufe-2-Erkennung: Sherpa-ONNX-Diarization plus lokale Profil-Embeddings aus den 20-Sekunden-Stimmproben.
 - Button `Zuhören und Zeiten ermitteln` startet und stoppt die Zeitmessung.

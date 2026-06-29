@@ -29,6 +29,7 @@ Wichtig: Codex hatte keinen direkten Zugriff auf GitHub-Credentials und hat kein
 - Personen können während der Vorstellungs-/Stimme-kennenlernen-Phase weiter hinzugefügt werden.
 - Teilnehmernamen und Sprechpegel sind farbcodiert.
 - 20-Sekunden-Phase `Stimme kennenlernen` pro Profil.
+- Stimme-kennenlernen-UI gibt direkte Rueckmeldung mit Countdown, Pegelstatus, verwertbarer Stimme, Checkliste und lokalem Pruefzustand.
 - Lokale In-Memory-Profile.
 - Zuhören/Zeitmessung mit VAD.
 - Toggle-Button `Zuhören und Zeiten ermitteln` zum Starten/Stoppen der Zeitmessung.
