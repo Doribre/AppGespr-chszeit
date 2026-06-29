@@ -61,6 +61,7 @@ const state = {
   liveStartedAt: 0,
   liveAccumulatedMs: 0,
   processingLive: false,
+  finalizingLive: false,
   liveAudioQueue: [],
   liveQueuedSamples: 0,
   liveRunId: 0,
@@ -143,7 +144,7 @@ async function startMicrophone() {
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: false
+        autoGainControl: true
       }
     });
   } catch (error) {
@@ -194,7 +195,7 @@ function enqueueLiveSamples(samples) {
 }
 
 function processLiveQueue() {
-  if (!state.live || state.processingLive || !state.liveAudioQueue.length) {
+  if ((!state.live && !state.finalizingLive) || state.processingLive || !state.liveAudioQueue.length) {
     return;
   }
 
@@ -219,8 +220,10 @@ function processLiveQueue() {
     .finally(() => {
       state.processingLive = false;
 
-      if (state.live && runId === state.liveRunId && state.liveAudioQueue.length) {
+      if ((state.live || state.finalizingLive) && runId === state.liveRunId && state.liveAudioQueue.length) {
         window.setTimeout(processLiveQueue, 0);
+      } else if (state.finalizingLive && runId === state.liveRunId) {
+        finishListeningStop();
       }
     });
 }
@@ -342,6 +345,7 @@ function startListening() {
   }
 
   state.live = true;
+  state.finalizingLive = false;
   state.liveStartedAt = performance.now();
   state.liveRunId += 1;
   clearLiveAudioQueue();
@@ -362,12 +366,29 @@ function startListening() {
 }
 
 function stopListening() {
+  if (state.finalizingLive) {
+    return;
+  }
+
   if (state.live && state.liveStartedAt) {
     state.liveAccumulatedMs += performance.now() - state.liveStartedAt;
   }
 
   state.live = false;
   state.liveStartedAt = 0;
+
+  if (state.processingLive || state.liveAudioQueue.length) {
+    state.finalizingLive = true;
+    processLiveQueue();
+  } else {
+    finishListeningStop();
+  }
+
+  render();
+}
+
+function finishListeningStop() {
+  state.finalizingLive = false;
   state.liveRunId += 1;
   clearLiveAudioQueue();
 
@@ -389,7 +410,7 @@ function handleEngineResults(results) {
   for (const result of results) {
     state.lastDebug = result;
 
-    if (!state.live || result.durationMs <= 0) {
+    if ((!state.live && !state.finalizingLive) || result.durationMs <= 0) {
       continue;
     }
 
@@ -435,6 +456,7 @@ function resetSession() {
   state.liveAccumulatedMs = 0;
   state.liveStartedAt = 0;
   state.processingLive = false;
+  state.finalizingLive = false;
   state.liveRunId += 1;
   clearLiveAudioQueue();
   state.speakingSeconds.clear();
@@ -517,9 +539,14 @@ function renderControls() {
   elements.participantCapacity.textContent = `${state.participants.length}/${MAX_PARTICIPANTS}`;
   elements.startEnrollmentButton.disabled = !canEnroll || Boolean(state.activeEnrollmentId) || state.live;
   elements.addParticipantButton.disabled = state.participants.length >= MAX_PARTICIPANTS || state.live;
-  elements.listenToggleButton.disabled = (!allEnrolled() || Boolean(state.activeEnrollmentId)) && !state.live;
-  elements.listenToggleButton.textContent = state.live ? "Zuhören stoppen" : "Zuhören und Zeiten ermitteln";
-  elements.listenToggleButton.classList.toggle("state-danger", state.live);
+  elements.listenToggleButton.disabled =
+    state.finalizingLive || ((!allEnrolled() || Boolean(state.activeEnrollmentId)) && !state.live);
+  elements.listenToggleButton.textContent = state.finalizingLive
+    ? "Zuhören wird beendet"
+    : state.live
+      ? "Zuhören stoppen"
+      : "Zuhören und Zeiten ermitteln";
+  elements.listenToggleButton.classList.toggle("state-danger", state.live || state.finalizingLive);
 
   if (!state.activeEnrollmentId) {
     const next = state.participants.find((participant) => !participant.enrolled);
@@ -563,6 +590,12 @@ function renderGuide() {
       ? `${next.name}: Schwätzometer braucht noch mehr Stimme, weil das Profil noch nicht klar genug ist.${addHint}`
       : `${next.name}: 20 Sekunden Stimme kennenlernen.${addHint}`;
     renderOptions(["Namen im Textfeld prüfen", "Stimme kennenlernen", canAdd ? "Weitere Person hinzufügen" : null]);
+    return;
+  }
+
+  if (state.finalizingLive) {
+    elements.nextAction.textContent = "Zuhören wird beendet. Die letzten aufgenommenen Audiodaten werden noch in die Zeiten eingerechnet.";
+    renderOptions(["Kurz warten", "Redeanteile finalisieren", "Danach Session zurücksetzen oder neu starten"]);
     return;
   }
 
@@ -693,15 +726,17 @@ function renderLiveStatus() {
   elements.liveClock.textContent = formatDuration(elapsed);
   elements.displayCountdown.textContent = state.live
     ? "zuhören"
+    : state.finalizingLive
+      ? "beendet..."
     : state.liveAccumulatedMs > 0
       ? "gestoppt"
       : allEnrolled()
         ? "bereit"
         : "Stimme fehlt";
   elements.liveSpeaker.textContent = speakerName;
-  elements.currentSpeaker.textContent = state.live ? speakerName : "-";
+  elements.currentSpeaker.textContent = state.live || state.finalizingLive ? speakerName : "-";
   elements.liveSpeaker.style.color = speakerColor;
-  elements.currentSpeaker.style.color = state.live ? speakerColor : "";
+  elements.currentSpeaker.style.color = state.live || state.finalizingLive ? speakerColor : "";
   elements.liveConfidence.textContent = last ? `${Math.round(last.confidence * 100)}% Confidence` : "-";
   elements.unknownState.textContent = last?.speakerId === UNKNOWN_ID ? "Unknown" : "Schwellwert aktiv";
 }
@@ -824,6 +859,8 @@ function renderDebug() {
     {
       scores: debug?.scores ?? {},
       margin: debug?.margin ?? 0,
+      decisionMode: debug?.decisionMode ?? "-",
+      contextSeconds: debug?.contextSeconds ?? 0,
       profileAudit: debug?.profileAudit ?? state.lastProfileAudit ?? null,
       rawClusters: debug?.rawClusters ?? []
     },

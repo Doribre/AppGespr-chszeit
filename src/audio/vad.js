@@ -1,8 +1,8 @@
 export class EnergyVad {
   constructor() {
-    this.noiseFloor = 0.008;
+    this.noiseFloor = 0.004;
     this.lastSpeech = false;
-    this.hangoverMs = 350;
+    this.hangoverMs = 650;
     this.lastSpeechAt = 0;
   }
 
@@ -24,8 +24,8 @@ export class EnergyVad {
 
     const rms = Math.sqrt(sumSquares / Math.max(samples.length, 1));
     const zcr = zeroCrossings / Math.max(samples.length, 1);
-    const adaptiveThreshold = Math.max(0.015, this.noiseFloor * 2.6);
-    const immediateSpeech = rms > adaptiveThreshold && zcr > 0.005 && zcr < 0.35;
+    const adaptiveThreshold = Math.max(0.008, this.noiseFloor * 2.2);
+    const immediateSpeech = rms > adaptiveThreshold && zcr > 0.002 && zcr < 0.42;
 
     if (immediateSpeech) {
       this.lastSpeechAt = nowMs;

@@ -55,3 +55,15 @@ Grund: Sherpa-Diarization ist spuerbar langsamer als einfache Feature-Vergleiche
 Die oeffentliche Preview wird nur ueber GitHub Pages bereitgestellt. Weil GitHub Pages COOP/COEP nicht als Projekt-Header konfigurieren laesst, registriert `src/coi.js` einen lokalen Service Worker. `coi-serviceworker.js` liefert die statischen Seitenressourcen danach mit den noetigen Cross-Origin-Isolation-Headern aus und laedt die Seite einmal neu.
 
 Grund: Sherpa-ONNX-WASM benoetigt `SharedArrayBuffer`. Ohne Cross-Origin-Isolation laedt die UI zwar, aber die echte Engine startet nicht.
+
+## 10. Tolerantere Live-Erkennung
+
+Die Live-Erkennung nutzt jetzt einen rollenden 4-Sekunden-Kontext statt nur ein einzelnes 1.25-Sekunden-Fenster. Die Diarization wird in der Live-Erkennung auf die Anzahl der bekannten Profile geclustert. Kurze unsichere Fenster werden ueber eine Hysterese geglaettet: direkte Entscheidungen, tentative Entscheidungen und ein kurzer Hold auf den letzten stabilen Sprecher.
+
+Grund: In echten Gespraechen sind Stimmen leiser, ueberlappen sich teilweise und der Abstand zum Mikrofon schwankt. Harte Einzel-Fenster-Entscheidungen erzeugten zu oft `Unknown` und dadurch zu selten aktualisierte Redeanteile.
+
+## 11. Stoppen finalisiert die Warteschlange
+
+Beim Stoppen der Zeitmessung werden bereits aufgenommene, aber noch nicht von Sherpa verarbeitete Audio-Bloecke nicht mehr verworfen. Die App zeigt `Zuhoeren wird beendet`, verarbeitet die Restwarteschlange und friert die Diagramme danach ein.
+
+Grund: Sonst fehlten die letzten Sekunden eines Gespraechs in Tortengrafik, Balken und Timeline.

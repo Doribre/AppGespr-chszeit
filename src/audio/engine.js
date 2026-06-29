@@ -3,12 +3,17 @@ import { downsampleTo16k } from "./features.js";
 
 const TARGET_SAMPLE_RATE = 16000;
 const WINDOW_SECONDS = 1.25;
+const LIVE_CONTEXT_SECONDS = 4;
 const PROFILE_TARGET_SECONDS = 20;
 const PROFILE_READY_SECONDS = 12;
 const PROFILE_CONTEXT_SECONDS = 5;
 const SILENCE_GAP_SECONDS = 0.35;
-const UNKNOWN_THRESHOLD = 0.58;
-const MIN_MARGIN = 0.16;
+const UNKNOWN_THRESHOLD = 0.38;
+const MIN_MARGIN = 0.03;
+const TENTATIVE_THRESHOLD = 0.28;
+const TENTATIVE_MARGIN = 0.01;
+const HOLD_LAST_SPEAKER_MS = 4000;
+const CHANGE_SPEAKER_THRESHOLD = 0.34;
 const MIN_PROFILE_PURITY = 0.62;
 const PROFILE_COLLISION_THRESHOLD = 0.72;
 const SHERPA_BASE = "./vendor/sherpa-onnx/";
@@ -42,10 +47,13 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
     this.diarizer = null;
     this.profiles = new Map();
     this.pendingSamples = new Float32Array(0);
+    this.liveContextSamples = new Float32Array(0);
     this.framesProcessed = 0;
     this.ready = false;
     this.modelStatus = "Sherpa-ONNX WASM wird geladen";
     this.lastProfileAudit = null;
+    this.lastKnownSpeakerId = null;
+    this.lastKnownAt = 0;
   }
 
   async initialize() {
@@ -95,6 +103,7 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
       modelStatus: this.modelStatus,
       targetSampleRate: TARGET_SAMPLE_RATE,
       windowSeconds: WINDOW_SECONDS,
+      liveContextSeconds: LIVE_CONTEXT_SECONDS,
       ready: this.ready
     };
   }
@@ -153,6 +162,7 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
       const vad = this.vad.analyze(window);
 
       if (!vad.speech) {
+        this.liveContextSamples = new Float32Array(0);
         results.push({
           type: "silence",
           durationMs: WINDOW_SECONDS * 1000,
@@ -163,7 +173,11 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         continue;
       }
 
-      const classified = this.classifyWindow(window);
+      this.liveContextSamples = trimToMaxSeconds(
+        appendSamples(this.liveContextSamples, window),
+        LIVE_CONTEXT_SECONDS
+      );
+      const classified = this.applyDecisionSmoothing(this.classifyWindow(this.liveContextSamples));
       this.framesProcessed += 1;
       results.push({
         type: classified.isKnown ? "speaker" : "unknown",
@@ -173,6 +187,8 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         durationMs: WINDOW_SECONDS * 1000,
         vad,
         scores: classified.scores,
+        decisionMode: classified.decisionMode,
+        contextSeconds: this.liveContextSamples.length / TARGET_SAMPLE_RATE,
         latencyMs: performance.now() - started,
         framesProcessed: this.framesProcessed,
         rawClusters: classified.rawClusters,
@@ -204,6 +220,9 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
   resetLiveBuffer() {
     this.vad = new EnergyVad();
     this.pendingSamples = new Float32Array(0);
+    this.liveContextSamples = new Float32Array(0);
+    this.lastKnownSpeakerId = null;
+    this.lastKnownAt = 0;
   }
 
   removeParticipant(id) {
@@ -301,7 +320,8 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         confidence: 0,
         margin: 0,
         scores,
-        rawClusters: []
+        rawClusters: [],
+        decisionMode: "no-profiles"
       };
     }
 
@@ -313,7 +333,7 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
       })),
       { id: liveId, samples: window }
     ];
-    const analysis = this.runDiarization(regions, { numClusters: -1, threshold: 0.48 });
+    const analysis = this.runDiarization(regions, { numClusters: Math.max(1, profiles.length), threshold: 0.5 });
     const liveRegion = analysis.regions.find((region) => region.id === liveId);
 
     if (!liveRegion || liveRegion.primaryCluster === null) {
@@ -323,7 +343,8 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
         confidence: 0,
         margin: 0,
         scores,
-        rawClusters: analysis.segments
+        rawClusters: analysis.segments,
+        decisionMode: "no-live-cluster"
       };
     }
 
@@ -341,11 +362,69 @@ export class SherpaOnnxWasmSpeakerEngine extends SpeakerShareEngine {
 
     return {
       isKnown: Boolean(best && confidence >= UNKNOWN_THRESHOLD && margin >= MIN_MARGIN),
-      bestId: best?.[0] ?? null,
+      bestId: confidence > 0 ? best?.[0] ?? null : null,
       confidence,
       margin,
       scores,
-      rawClusters: analysis.segments
+      rawClusters: analysis.segments,
+      decisionMode: "direct"
+    };
+  }
+
+  applyDecisionSmoothing(classified) {
+    const now = performance.now();
+    const bestId = classified.bestId;
+    const confidence = classified.confidence ?? 0;
+    const margin = classified.margin ?? 0;
+
+    if (classified.isKnown && bestId) {
+      this.lastKnownSpeakerId = bestId;
+      this.lastKnownAt = now;
+      return { ...classified, decisionMode: "direct" };
+    }
+
+    const tentative =
+      bestId &&
+      confidence >= TENTATIVE_THRESHOLD &&
+      margin >= TENTATIVE_MARGIN &&
+      (!this.lastKnownSpeakerId ||
+        bestId === this.lastKnownSpeakerId ||
+        confidence >= CHANGE_SPEAKER_THRESHOLD ||
+        now - this.lastKnownAt > HOLD_LAST_SPEAKER_MS);
+
+    if (tentative) {
+      this.lastKnownSpeakerId = bestId;
+      this.lastKnownAt = now;
+      return {
+        ...classified,
+        isKnown: true,
+        bestId,
+        decisionMode: "tentative"
+      };
+    }
+
+    const canHold =
+      this.lastKnownSpeakerId &&
+      now - this.lastKnownAt <= HOLD_LAST_SPEAKER_MS &&
+      (!bestId || bestId === this.lastKnownSpeakerId || confidence < CHANGE_SPEAKER_THRESHOLD);
+
+    if (canHold) {
+      const scores = { ...classified.scores };
+      scores[this.lastKnownSpeakerId] = Math.max(scores[this.lastKnownSpeakerId] ?? 0, 0.24);
+      return {
+        ...classified,
+        isKnown: true,
+        bestId: this.lastKnownSpeakerId,
+        confidence: Math.max(confidence, 0.24),
+        scores,
+        decisionMode: "hold-last"
+      };
+    }
+
+    return {
+      ...classified,
+      isKnown: false,
+      decisionMode: classified.decisionMode === "direct" ? "unknown" : classified.decisionMode
     };
   }
 

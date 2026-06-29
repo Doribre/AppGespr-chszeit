@@ -34,6 +34,9 @@ Wichtig: Codex hatte keinen direkten Zugriff auf GitHub-Credentials und hat kein
 - Toggle-Button `Zuhören und Zeiten ermitteln` zum Starten/Stoppen der Zeitmessung.
 - Live-Audio wird waehrend Sherpa-Rechenlaeufen gepuffert statt verworfen.
 - Live-Analysefenster aktuell: 1.25 Sekunden.
+- Live-Erkennung nutzt 4 Sekunden rollenden Kontext, tentative Entscheidungen und kurzen Hold auf den letzten stabilen Sprecher.
+- VAD ist empfindlicher fuer leisere Gespraechssituationen.
+- Stoppen finalisiert die Live-Warteschlange, bevor Diagramme einfrieren.
 - Current Speaker, Scores, Unknown-State.
 - Accumulated speaking time.
 - Timeline.
