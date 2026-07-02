@@ -60,4 +60,6 @@ Do not replace it with `sherpa-onnx-wasm-nodejs.*`; that runtime is for Node.js 
 
 ## GitHub Workflow
 
-The repository is managed through GitHub Desktop. Avoid changing global Git configuration to work around local ownership issues. Prefer ordinary file edits in the repository, then let the user review, commit, and push via GitHub Desktop.
+The repository is managed through GitHub Desktop and the normal local Git remote. Avoid changing global Git configuration to work around local ownership issues. Prefer ordinary file edits in the repository. Commit and push directly only when the user explicitly asks for GitHub to be updated; otherwise let the user review, commit, and push via GitHub Desktop.
+
+This project must stay GitHub-only. Do not add GitLab remotes, GitLab CI, or GitLab previews.

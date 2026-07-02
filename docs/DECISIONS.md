@@ -1,6 +1,6 @@
 # Technische Entscheidungen
 
-Stand: 2026-06-28
+Stand: 2026-07-02
 
 ## 1. Keine Cloud, keine Transkription
 

@@ -1,6 +1,6 @@
 # Projektkontext
 
-Stand: 2026-06-29
+Stand: 2026-07-02
 
 ## Ziel
 

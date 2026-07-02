@@ -1,6 +1,6 @@
 # GitHub Pages Preview
 
-Stand: 2026-06-28
+Stand: 2026-07-02
 
 ## Ziel
 
@@ -14,6 +14,12 @@ Schwaetzometer wird nur ueber GitHub bereitgestellt. Die Preview soll als GitHub
 
 Audio wird dabei nicht zu GitHub hochgeladen. Mikrofon, VAD, Sherpa-ONNX-WASM, Sprecherprofile, Scores und Diagramme laufen im Browser der Person, die die Seite oeffnet.
 
+Aktuelle Preview-URL:
+
+```text
+https://doribre.github.io/AppGespr-chszeit/
+```
+
 ## Deployment
 
 `.github/workflows/pages.yml` nutzt den offiziellen GitHub-Actions-Weg fuer Pages:
@@ -25,6 +31,12 @@ Audio wird dabei nicht zu GitHub hochgeladen. Mikrofon, VAD, Sherpa-ONNX-WASM, S
 5. Nach GitHub Pages deployen.
 
 Nach einem Push auf `main` sollte GitHub Actions die Preview bauen.
+
+Nach erfolgreichem Deploy kann GitHub Pages noch einige Minuten alten HTML-/Asset-Stand ausliefern. Bei Tests nach einem Push deshalb hart neu laden oder einen Query-Parameter nutzen, z. B.:
+
+```text
+https://doribre.github.io/AppGespr-chszeit/?v=<commit>
+```
 
 ## COOP/COEP und GitHub Pages
 

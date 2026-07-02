@@ -2,19 +2,27 @@
 
 Diese Datei beschreibt, wie das Projekt nach einem neu aufgesetzten PC wiederhergestellt werden kann.
 
+Stand: 2026-07-02
+
 ## Voraussetzungen
 
 - Node.js installieren.
 - GitHub Desktop installieren.
 - In GitHub Desktop mit dem GitHub-Konto anmelden.
-- Repository `AppGesprächszeit` von GitHub klonen.
+- Repository `Doribre/AppGespr-chszeit` von GitHub klonen.
 - Chrome oder Edge zum Testen verwenden.
+
+Öffentliche Preview:
+
+```text
+https://doribre.github.io/AppGespr-chszeit/
+```
 
 ## Wiederherstellung mit GitHub Desktop
 
 1. GitHub Desktop öffnen.
 2. `File` -> `Clone repository...`
-3. Repository `Doribre/AppGesprächszeit` auswählen, falls es unter diesem Konto veröffentlicht wurde.
+3. Repository `Doribre/AppGespr-chszeit` auswählen.
 4. Lokalen Zielordner wählen, z. B.:
 
 ```text
@@ -28,6 +36,12 @@ C:\Users\brendernb\Documents\GitHub\AppGesprächszeit
 Im Repositoryordner:
 
 ```powershell
+npm run check
+```
+
+Danach:
+
+```powershell
 npm start
 ```
 
@@ -38,6 +52,26 @@ http://127.0.0.1:5173
 ```
 
 Wenn Port `5173` belegt ist, zeigt der Server im Terminal den tatsächlich verwendeten Port an.
+
+## Stand prüfen
+
+Nach dem Klonen sollte `main` den aktuellen Stand enthalten. Die wichtigsten Dateien zur Orientierung:
+
+- `docs/VERSION_0_1.md`: Snapshot der Version 0.1.
+- `docs/SESSION_METADATA.md`: aktueller Projekt- und GitHub-Stand.
+- `docs/GITHUB_PAGES.md`: Preview und COOP/COEP-Hinweise.
+
+Prüfen, ob der Arbeitsbaum sauber ist:
+
+```powershell
+git status --short
+```
+
+Aktuelle Commits ansehen:
+
+```powershell
+git log --oneline -5
+```
 
 ## Sherpa-Dateien
 
@@ -74,5 +108,6 @@ Nach dem Klonen zuerst lesen:
 5. `docs/SHERPA_BROWSER_BUILD.md`
 6. `docs/DECISIONS.md`
 7. `docs/SESSION_METADATA.md`
+8. `docs/VERSION_0_1.md`
 
 Danach `npm run check` ausführen.

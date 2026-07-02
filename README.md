@@ -52,6 +52,7 @@ Wichtig: Der Build benötigt `SharedArrayBuffer`. Deshalb muss die App über den
 - [Architektur](docs/ARCHITECTURE.md)
 - [Sherpa Browser Build](docs/SHERPA_BROWSER_BUILD.md)
 - [GitHub Pages Preview](docs/GITHUB_PAGES.md)
+- [Version 0.1 Snapshot](docs/VERSION_0_1.md)
 - [Entscheidungen](docs/DECISIONS.md)
 - [Session-Metadaten](docs/SESSION_METADATA.md)
 - [Wiederherstellung nach Neuaufsetzen](docs/RECOVERY.md)

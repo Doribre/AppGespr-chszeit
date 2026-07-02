@@ -1,6 +1,6 @@
 # Session-Metadaten
 
-Stand: 2026-06-29, Europe/Berlin
+Stand: 2026-07-02, Europe/Berlin
 
 ## Projekt
 
@@ -11,12 +11,15 @@ Stand: 2026-06-29, Europe/Berlin
 - GitHub-Desktop-Konto laut Screenshot: `Doribre`
 - Projektziel: nur GitHub. Keine GitLab-Remote, keine GitLab-CI, keine GitLab-Preview fuer dieses Projekt.
 - GitHub Pages wurde in den Repository-Settings auf `GitHub Actions` gestellt.
+- GitHub-Repository: `https://github.com/Doribre/AppGespr-chszeit`
+- GitHub-Pages-Preview: `https://doribre.github.io/AppGespr-chszeit/`
+- Version: `0.1.0`
 
 ## Erstellt durch
 
-Codex in einer lokalen Desktop-Session.
+Codex in lokalen Desktop-Sessions.
 
-Wichtig: Codex hatte keinen direkten Zugriff auf GitHub-Credentials und hat keinen Push ausgeführt. Dateien werden in den lokalen GitHub-Desktop-Repositoryordner kopiert. Commit und Push sollen über GitHub Desktop erfolgen.
+Wichtig: GitHub-Zugriff läuft über das lokal konfigurierte Git-/GitHub-Desktop-Setup dieses PCs. Codex speichert keine GitHub-Tokens, Passwörter oder Secrets im Repository. Commits und Pushes wurden nur nach expliziter Nutzerbitte ausgeführt.
 
 ## Implementierter Stand
 
@@ -50,6 +53,7 @@ Wichtig: Codex hatte keinen direkten Zugriff auf GitHub-Credentials und hat kein
 - GitHub-Pages-Workflow in `.github/workflows/pages.yml`.
 - GitHub-Pages-Preview nutzt `src/coi.js` und `coi-serviceworker.js`, damit `crossOriginIsolated` auf GitHub Pages moeglich wird.
 - Dokumentation und Handoff-Dateien.
+- Zusatzdokument `docs/VERSION_0_1.md` beschreibt den wiederherstellbaren Version-0.1-Stand.
 
 ## Sherpa-Artefakte
 
@@ -72,7 +76,9 @@ npm run check
 
 Ergebnis: Node-Syntaxchecks waren sauber.
 
-Noch nötig: Browser-Ladetest mit Mikrofonfreigabe in Chrome/Edge. Der Sherpa-Build benötigt `SharedArrayBuffer`; im Browser muss `crossOriginIsolated` wahr sein.
+GitHub Actions `Deploy GitHub Pages` lief für den Code-Stand `Make voice enrollment adaptive` erfolgreich durch.
+
+Noch nötig: Browser-Ladetest mit Mikrofonfreigabe in Chrome/Edge nach Pages-Propagation. Der Sherpa-Build benötigt `SharedArrayBuffer`; im Browser muss `crossOriginIsolated` wahr sein.
 
 ## Bekannte Einschränkungen
 
