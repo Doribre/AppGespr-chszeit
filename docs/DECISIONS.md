@@ -75,3 +75,9 @@ Die Live-Erkennung nutzt nicht mehr nur den Sherpa-Cluster-Treffer zwischen Prof
 Grund: In echten Gespraechen erkannte die reine Cluster-Zuordnung passende Stimmen zu selten, besonders bei wechselndem Mikrofonabstand und aehnlichen Stimmen. Der zusaetzliche Profilvergleich gibt der App ein stabileres Sitzungssignal, ohne Transkription, Upload oder persistente Sprecherprofile einzufuehren.
 
 Grenze: Der aktuelle Sherpa-Browser-Wrapper exponiert das interne `embedding.onnx` nicht als separate JavaScript-Speaker-Verification-API. Stufe 2 bleibt deshalb eine lokale Browser-Schicht ueber der offiziellen Sherpa-Diarization-Runtime.
+
+## 13. Adaptive Stimme-kennenlernen-Phase
+
+Die Stimmprobe ist nicht mehr fest auf 20 Sekunden gesetzt. Die UI sammelt mindestens 10 Sekunden Aufnahme, bewertet Pegel, verwertbare Stimme und unterschiedliche Sprachabschnitte, prüft bei guter Probe automatisch und stoppt spätestens nach 30 Sekunden.
+
+Grund: Anwender sollen während des Einlernens direkt verstehen, was noch fehlt: lauter sprechen, weniger Pausen oder abwechslungsreichere Sätze. Gute Proben sind dadurch schneller fertig, schwierige Stimmen bekommen mehr Material, ohne dass Audio gespeichert oder hochgeladen wird.

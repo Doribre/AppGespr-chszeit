@@ -15,7 +15,7 @@ Die App läuft lokal im Browser, verwendet Mikrofon-Audio, bildet temporäre Spr
 - 1 bis 7 Teilnehmer.
 - Namen werden per Tastatur eingegeben, damit keine Spracherkennung nötig ist.
 - Jede Person hat eine feste Farbe; Namen und Sprechpegel nutzen diese Farbe.
-- Pro Teilnehmer 20 Sekunden `Stimme kennenlernen`.
+- Pro Teilnehmer adaptive Phase `Stimme kennenlernen`: mindestens 10 Sekunden, maximal 30 Sekunden.
 - Speaker-Profile nur im Arbeitsspeicher der aktuellen Session.
 - Profilvergleich in Stufe 2 über lokale Audio-Embeddings plus Sherpa-Diarization-Scores.
 - Keine Transkription.
@@ -31,7 +31,7 @@ Die App läuft lokal im Browser, verwendet Mikrofon-Audio, bildet temporäre Spr
 
 ## Produktidee
 
-Zu Beginn legt die moderierende Person mindestens eine Person an und tippt den Namen ein. Während der Vorstellungsrunde können weitere Personen ergänzt werden, bis maximal 7 Teilnehmer in der Session sind. Danach führt die App durch `Stimme kennenlernen`: Jede Person spricht 20 Sekunden zur Stimmprobe. Daraus entsteht ein temporäres Sprecherprofil.
+Zu Beginn legt die moderierende Person mindestens eine Person an und tippt den Namen ein. Während der Vorstellungsrunde können weitere Personen ergänzt werden, bis maximal 7 Teilnehmer in der Session sind. Danach führt die App durch `Stimme kennenlernen`: Jede Person spricht so lange zur Stimmprobe, bis Pegel, verwertbare Stimme und Abwechslung reichen, mindestens 10 Sekunden und maximal 30 Sekunden. Daraus entsteht ein temporäres Sprecherprofil.
 
 Nach `Stimme kennenlernen` startet die Zeitmessung über den Button `Zuhören und Zeiten ermitteln`. Derselbe Button stoppt das Zuhören wieder, damit Zeiten eingefroren bleiben oder das Gespräch beendet werden kann. Die App ignoriert Stille und zählt erkannte Sprachfenster; unsichere Sprachfenster werden als `Unknown` mitgezählt.
 

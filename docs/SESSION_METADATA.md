@@ -28,15 +28,15 @@ Wichtig: Codex hatte keinen direkten Zugriff auf GitHub-Credentials und hat kein
 - Sichtbare In-App-Kurzanleitung mit nächstem Schritt.
 - Personen können während der Vorstellungs-/Stimme-kennenlernen-Phase weiter hinzugefügt werden.
 - Teilnehmernamen und Sprechpegel sind farbcodiert.
-- 20-Sekunden-Phase `Stimme kennenlernen` pro Profil.
-- Stimme-kennenlernen-UI gibt direkte Rueckmeldung mit Countdown, Pegelstatus, verwertbarer Stimme, Checkliste und lokalem Pruefzustand.
+- Adaptive Phase `Stimme kennenlernen` pro Profil: mindestens 10 Sekunden, maximal 30 Sekunden.
+- Stimme-kennenlernen-UI gibt direkte Rueckmeldung mit Restzeit, Pegelstatus, verwertbarer Stimme, Abwechslung, Checkliste und lokalem Pruefzustand.
 - Lokale In-Memory-Profile.
 - Zuhören/Zeitmessung mit VAD.
 - Toggle-Button `Zuhören und Zeiten ermitteln` zum Starten/Stoppen der Zeitmessung.
 - Live-Audio wird waehrend Sherpa-Rechenlaeufen gepuffert statt verworfen.
 - Live-Analysefenster aktuell: 1.25 Sekunden.
 - Live-Erkennung nutzt 4 Sekunden rollenden Kontext, tentative Entscheidungen und kurzen Hold auf den letzten stabilen Sprecher.
-- Stufe-2-Erkennung erzeugt lokale Session-Embeddings aus den 20-Sekunden-Stimmproben und kombiniert deren Scores mit Sherpa-Diarization-Scores.
+- Stufe-2-Erkennung erzeugt lokale Session-Embeddings aus den adaptiven Stimmproben und kombiniert deren Scores mit Sherpa-Diarization-Scores.
 - Debug zeigt kombinierte Scores, lokale Embedding-Scores, rohe Embedding-Aehnlichkeiten und Sherpa-Diarization-Scores getrennt an.
 - VAD ist empfindlicher fuer leisere Gespraechssituationen.
 - Stoppen finalisiert die Live-Warteschlange, bevor Diagramme einfrieren.

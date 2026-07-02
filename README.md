@@ -9,10 +9,10 @@ Browser-basierter technischer MVP für lokale Sprecheranteil-Erkennung ohne Tran
 - 1 bis 7 Teilnehmer.
 - Namen werden per Tastatur eingegeben, nicht per Sprache erkannt.
 - Jede Person hat eine feste Farbe; Namen und Sprechpegel nutzen diese Farbe.
-- 20 Sekunden `Stimme kennenlernen` pro Teilnehmer.
-- Die Stimme-kennenlernen-Phase zeigt direkt Countdown, Pegel-Feedback, verwertbare Stimme und Ergebnis der Profilprüfung.
+- Adaptive Phase `Stimme kennenlernen` pro Teilnehmer: mindestens 10 Sekunden, maximal 30 Sekunden.
+- Die Stimme-kennenlernen-Phase zeigt direkt Restzeit, Pegel-Feedback, verwertbare Stimme, Abwechslung und Ergebnis der Profilprüfung.
 - In-Memory-Sprecherprofile nur für die aktuelle Session.
-- Stufe-2-Erkennung: Sherpa-ONNX-Diarization plus lokale Profil-Embeddings aus den 20-Sekunden-Stimmproben.
+- Stufe-2-Erkennung: Sherpa-ONNX-Diarization plus lokale Profil-Embeddings aus den adaptiven Stimmproben.
 - Button `Zuhören und Zeiten ermitteln` startet und stoppt die Zeitmessung.
 - VAD ignoriert Stille.
 - Anzeige von aktuellem Sprecher, Scores, Unknown-State, Redezeit, Timeline, Pie Chart, Balkendiagramm und Debug-Werten.
@@ -60,4 +60,4 @@ Wichtig: Der Build benötigt `SharedArrayBuffer`. Deshalb muss die App über den
 
 ## Einschränkung
 
-Die App testet weiterhin das echte Sherpa-ONNX-Browsermodell. Stufe 2 kombiniert die Sherpa-Diarization-Cluster mit lokalen, nicht persistenten Audio-Embeddings aus den 20-Sekunden-Stimmproben. Der Browser-Build liefert aktuell keine direkte JavaScript-API, um das Sherpa-Embeddingmodell separat als Speaker-Verification-Extractor aufzurufen; deshalb bleibt Sherpa der Diarization-Kern und der Profilvergleich ist eine lokale Browser-Schicht darüber. Das ist ein technischer MVP, keine geprüfte Sprecherbiometrie.
+Die App testet weiterhin das echte Sherpa-ONNX-Browsermodell. Stufe 2 kombiniert die Sherpa-Diarization-Cluster mit lokalen, nicht persistenten Audio-Embeddings aus den adaptiven Stimmproben. Der Browser-Build liefert aktuell keine direkte JavaScript-API, um das Sherpa-Embeddingmodell separat als Speaker-Verification-Extractor aufzurufen; deshalb bleibt Sherpa der Diarization-Kern und der Profilvergleich ist eine lokale Browser-Schicht darüber. Das ist ein technischer MVP, keine geprüfte Sprecherbiometrie.

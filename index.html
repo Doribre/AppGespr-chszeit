@@ -13,6 +13,7 @@
         <div>
           <p class="eyebrow">Lokale Speaker-Share-Erkennung</p>
           <h1>Schwätzometer</h1>
+          <p class="version-label">Version 0.1</p>
         </div>
         <div class="topbar-actions">
           <button id="micButton" class="primary" type="button">Mikrofon starten</button>
@@ -44,8 +45,8 @@
           <p class="eyebrow">Ablauf</p>
           <h2>So testest du das erste Gespräch</h2>
           <p>
-            Erst Mikrofon starten, dann die Namen per Tastatur eingeben. Danach spricht jede Person 20 Sekunden für
-            ihr Profil. Es gibt keine Spracherkennung und keine Transkription.
+            Erst Mikrofon starten, dann die Namen per Tastatur eingeben. Danach spricht jede Person so lange, bis die
+            App genug verwertbare Stimme hat, meist 10 bis 30 Sekunden. Es gibt keine Spracherkennung und keine Transkription.
           </p>
         </div>
         <ol class="guide-steps">
@@ -84,7 +85,7 @@
           <div class="panel-header">
             <div>
               <h2>Stimme kennenlernen</h2>
-              <p>Schwätzometer führt jede Person einzeln durch die Stimmprobe und sagt sofort, ob genug verwertbare Stimme ankommt.</p>
+              <p>Schwätzometer führt jede Person einzeln durch die Stimmprobe und sagt sofort, ob Pegel, Menge und Abwechslung reichen.</p>
             </div>
             <span id="enrollmentStateBadge" class="status-badge">Wartet</span>
           </div>
@@ -109,7 +110,7 @@
             <div>
               <div class="progress-label">
                 <span>Zeit</span>
-                <strong id="enrollmentTimeText">0 / 20s</strong>
+                <strong id="enrollmentTimeText">0 / 30s</strong>
               </div>
               <div class="meter" aria-label="Fortschritt Stimme kennenlernen">
                 <div id="enrollmentProgress" class="meter-fill"></div>
@@ -118,7 +119,7 @@
             <div>
               <div class="progress-label">
                 <span>Verwertbare Stimme</span>
-                <strong id="enrollmentSpeechText">0 / 12s</strong>
+                <strong id="enrollmentSpeechText">0 / 14s</strong>
               </div>
               <div class="meter speech-meter" aria-label="Verwertbare Stimme">
                 <div id="enrollmentSpeechProgress" class="meter-fill"></div>

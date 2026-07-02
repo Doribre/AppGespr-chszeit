@@ -1,10 +1,14 @@
 import { colorForIndex, drawPieChart, formatDuration } from "./charts.js";
 import { SherpaOnnxWasmSpeakerEngine } from "./audio/engine.js";
 
-const ENROLLMENT_SECONDS = 20;
-const ENROLLMENT_MIN_SPEECH_SECONDS = 12;
+const ENROLLMENT_MIN_SECONDS = 10;
+const ENROLLMENT_MAX_SECONDS = 30;
+const ENROLLMENT_MIN_SPEECH_SECONDS = 10;
+const ENROLLMENT_TARGET_SPEECH_SECONDS = 14;
 const ENROLLMENT_LOW_LEVEL = 0.012;
 const ENROLLMENT_GOOD_LEVEL = 0.026;
+const ENROLLMENT_VARIETY_SEGMENTS = 4;
+const ENROLLMENT_SILENCE_RESET_MS = 420;
 const MAX_PARTICIPANTS = 7;
 const MIN_PARTICIPANTS = 1;
 const UNKNOWN_ID = "unknown";
@@ -71,6 +75,9 @@ const state = {
   enrollmentLevel: 0,
   enrollmentSpeechMs: 0,
   enrollmentLastRms: 0,
+  enrollmentSpeechSegments: 0,
+  enrollmentWasSpeaking: false,
+  enrollmentSilenceMs: 0,
   live: false,
   liveStartedAt: 0,
   liveAccumulatedMs: 0,
@@ -194,11 +201,28 @@ function handleAudioProcess(event) {
   if (state.activeEnrollmentId) {
     state.enrollmentSamples.push(samples);
     const rms = computeRms(samples);
+    const chunkMs = (samples.length / (state.audioContext?.sampleRate ?? 48000)) * 1000;
+    const speaking = rms >= ENROLLMENT_LOW_LEVEL;
     state.enrollmentLastRms = rms;
     state.enrollmentLevel = smoothLevel(state.enrollmentLevel, rms);
 
-    if (rms >= ENROLLMENT_LOW_LEVEL) {
-      state.enrollmentSpeechMs += (samples.length / (state.audioContext?.sampleRate ?? 48000)) * 1000;
+    if (speaking) {
+      state.enrollmentSpeechMs += chunkMs;
+
+      if (
+        !state.enrollmentWasSpeaking &&
+        (state.enrollmentSpeechSegments === 0 || state.enrollmentSilenceMs >= ENROLLMENT_SILENCE_RESET_MS)
+      ) {
+        state.enrollmentSpeechSegments += 1;
+      }
+
+      state.enrollmentWasSpeaking = true;
+      state.enrollmentSilenceMs = 0;
+    } else {
+      state.enrollmentSilenceMs += chunkMs;
+      if (state.enrollmentSilenceMs >= ENROLLMENT_SILENCE_RESET_MS) {
+        state.enrollmentWasSpeaking = false;
+      }
     }
 
     updateEnrollmentProgress();
@@ -293,6 +317,9 @@ function startEnrollment() {
   state.enrollmentLevel = 0;
   state.enrollmentSpeechMs = 0;
   state.enrollmentLastRms = 0;
+  state.enrollmentSpeechSegments = 0;
+  state.enrollmentWasSpeaking = false;
+  state.enrollmentSilenceMs = ENROLLMENT_SILENCE_RESET_MS;
   elements.enrollmentProgress.style.width = "0%";
   elements.enrollmentSpeechProgress.style.width = "0%";
   next.enrolling = true;
@@ -300,10 +327,15 @@ function startEnrollment() {
   render();
 }
 
-async function stopEnrollment() {
+async function stopEnrollment(force = false) {
   const participant = state.participants.find((entry) => entry.id === state.activeEnrollmentId);
 
   if (!participant) {
+    return;
+  }
+
+  if (force !== true && !enrollmentCanBeChecked()) {
+    renderEnrollmentStatus();
     return;
   }
 
@@ -317,6 +349,9 @@ async function stopEnrollment() {
   state.enrollmentSamples = [];
   state.enrollmentLevel = 0;
   state.enrollmentLastRms = 0;
+  state.enrollmentSpeechSegments = 0;
+  state.enrollmentWasSpeaking = false;
+  state.enrollmentSilenceMs = 0;
   render();
 
   try {
@@ -340,6 +375,9 @@ async function stopEnrollment() {
   } finally {
     state.checkingEnrollmentId = null;
     state.enrollmentSpeechMs = 0;
+    state.enrollmentSpeechSegments = 0;
+    state.enrollmentWasSpeaking = false;
+    state.enrollmentSilenceMs = 0;
   }
 
   render();
@@ -347,16 +385,17 @@ async function stopEnrollment() {
 
 function updateEnrollmentProgress() {
   const elapsed = (performance.now() - state.enrollmentStartedAt) / 1000;
-  const progress = Math.min(1, elapsed / ENROLLMENT_SECONDS);
+  const readiness = enrollmentReadiness();
+  const progress = Math.min(1, elapsed / ENROLLMENT_MAX_SECONDS);
   elements.enrollmentProgress.style.width = `${progress * 100}%`;
   elements.enrollmentSpeechProgress.style.width = `${Math.min(
     100,
-    (enrollmentSpeechSeconds() / ENROLLMENT_MIN_SPEECH_SECONDS) * 100
+    (enrollmentSpeechSeconds() / ENROLLMENT_TARGET_SPEECH_SECONDS) * 100
   )}%`;
   renderEnrollmentStatus();
 
-  if (elapsed >= ENROLLMENT_SECONDS) {
-    stopEnrollment();
+  if (readiness.strong || elapsed >= ENROLLMENT_MAX_SECONDS) {
+    stopEnrollment(true);
   }
 }
 
@@ -581,7 +620,8 @@ function renderControls() {
       : next?.needsMoreAudio
         ? "Mehr Stimme aufnehmen"
         : "Stimme kennenlernen starten";
-  elements.skipEnrollmentButton.textContent = state.activeEnrollmentId ? "Jetzt prüfen" : "Jetzt prüfen";
+  elements.skipEnrollmentButton.textContent =
+    state.activeEnrollmentId && !enrollmentCanBeChecked() ? "Noch aufnehmen" : "Jetzt prüfen";
   elements.addParticipantButton.disabled = state.participants.length >= MAX_PARTICIPANTS || state.live || checkingEnrollment;
   elements.listenToggleButton.disabled =
     state.finalizingLive || checkingEnrollment || ((!allEnrolled() || Boolean(state.activeEnrollmentId)) && !state.live);
@@ -592,7 +632,7 @@ function renderControls() {
       : "Zuhören und Zeiten ermitteln";
   elements.listenToggleButton.classList.toggle("state-danger", state.live || state.finalizingLive);
 
-  elements.skipEnrollmentButton.disabled = !state.activeEnrollmentId;
+  elements.skipEnrollmentButton.disabled = !state.activeEnrollmentId || !enrollmentCanBeChecked();
 }
 
 function renderGuide() {
@@ -622,8 +662,10 @@ function renderGuide() {
     const participant = state.participants.find((entry) => entry.id === state.activeEnrollmentId);
     const addHint =
       state.participants.length < MAX_PARTICIPANTS ? " Bei Bedarf kannst du währenddessen noch eine Person hinzufügen." : "";
-    elements.nextAction.textContent = `${participant?.name ?? "Die aktuelle Person"} spricht jetzt. Achte auf „Pegel passt“ und auf den Balken „Verwertbare Stimme“.${addHint}`;
-    renderOptions(["Weiter sprechen lassen", "Jetzt prüfen", canAdd ? "Weitere Person hinzufügen" : null]);
+    const readiness = enrollmentReadiness();
+    const action = enrollmentGuidance(readiness, enrollmentLevelFeedback());
+    elements.nextAction.textContent = `${participant?.name ?? "Die aktuelle Person"} spricht jetzt. ${action.help}${addHint}`;
+    renderOptions([action.label, readiness.canCheck ? "Jetzt prüfen möglich" : "Weiter aufnehmen", canAdd ? "Weitere Person hinzufügen" : null]);
     return;
   }
 
@@ -633,8 +675,8 @@ function renderGuide() {
     const addHint =
       state.participants.length < MAX_PARTICIPANTS ? " Du kannst vorher oder danach weitere Personen hinzufügen." : "";
     elements.nextAction.textContent = next.needsMoreAudio
-      ? `${next.name}: Bitte noch einmal Stimme aufnehmen. Die App zeigt währenddessen, ob der Pegel passt.${addHint}`
-      : `${next.name}: Namen prüfen, dann Stimme kennenlernen starten. Die Person spricht normal, bis der Fortschritt reicht.${addHint}`;
+      ? `${next.name}: Bitte noch einmal Stimme aufnehmen. Die App zeigt währenddessen, ob Pegel, Menge und Abwechslung reichen.${addHint}`
+      : `${next.name}: Namen prüfen, dann Stimme kennenlernen starten. Die Person spricht normal, meist 10 bis 30 Sekunden.${addHint}`;
     renderOptions(["Namen im Textfeld prüfen", "Stimme kennenlernen starten", canAdd ? "Weitere Person hinzufügen" : null]);
     return;
   }
@@ -758,11 +800,11 @@ function renderEnrollmentStatus() {
   const participant = active ?? checking ?? next;
   const color = participant ? colorForParticipant(participant.id) : "#9aa5b1";
   const level = active ? state.enrollmentLevel : 0;
-  const elapsed = active ? enrollmentElapsedSeconds() : 0;
-  const speechSeconds = active ? enrollmentSpeechSeconds() : 0;
-  const timeProgress = active ? Math.min(1, elapsed / ENROLLMENT_SECONDS) : 0;
-  const speechProgress = active ? Math.min(1, speechSeconds / ENROLLMENT_MIN_SPEECH_SECONDS) : 0;
-  const remaining = Math.max(0, ENROLLMENT_SECONDS - elapsed);
+  const readiness = active ? enrollmentReadiness() : null;
+  const elapsed = readiness?.elapsed ?? 0;
+  const speechSeconds = readiness?.speechSeconds ?? 0;
+  const timeProgress = active ? Math.min(1, elapsed / ENROLLMENT_MAX_SECONDS) : 0;
+  const speechProgress = active ? Math.min(1, speechSeconds / ENROLLMENT_TARGET_SPEECH_SECONDS) : 0;
 
   elements.enrollmentLevelName.textContent = participant ? participant.name : "wartet";
   elements.enrollmentLevelName.style.color = color;
@@ -772,10 +814,12 @@ function renderEnrollmentStatus() {
   elements.enrollmentSpeechProgress.style.width = `${Math.round(speechProgress * 100)}%`;
   elements.enrollmentProgress.style.background = participant ? color : "#27ae60";
   elements.enrollmentSpeechProgress.style.background = speechProgress >= 1 ? "#1e7942" : color;
-  elements.enrollmentTimeText.textContent = active ? `${Math.floor(elapsed)} / ${ENROLLMENT_SECONDS}s` : `0 / ${ENROLLMENT_SECONDS}s`;
+  elements.enrollmentTimeText.textContent = active
+    ? `${Math.floor(elapsed)} / ${ENROLLMENT_MAX_SECONDS}s`
+    : `0 / ${ENROLLMENT_MAX_SECONDS}s`;
   elements.enrollmentSpeechText.textContent = active
-    ? `${Math.floor(speechSeconds)} / ${ENROLLMENT_MIN_SPEECH_SECONDS}s`
-    : `0 / ${ENROLLMENT_MIN_SPEECH_SECONDS}s`;
+    ? `${Math.floor(speechSeconds)} / ${ENROLLMENT_TARGET_SPEECH_SECONDS}s`
+    : `0 / ${ENROLLMENT_TARGET_SPEECH_SECONDS}s`;
 
   if (checking) {
     elements.enrollmentStateBadge.textContent = "Prüft";
@@ -796,21 +840,31 @@ function renderEnrollmentStatus() {
 
   if (active) {
     const feedback = enrollmentLevelFeedback();
+    const action = enrollmentGuidance(readiness, feedback);
     elements.enrollmentStateBadge.textContent = "Nimmt auf";
     elements.enrollmentStateBadge.className = "status-badge is-recording";
-    elements.enrollmentTimer.textContent = `${Math.ceil(remaining)}s`;
-    elements.enrollmentVoiceFeedback.textContent = feedback.label;
-    elements.enrollmentVoiceFeedback.style.color = feedback.color;
+    elements.enrollmentTimer.textContent = action.timer;
+    elements.enrollmentVoiceFeedback.textContent = action.label;
+    elements.enrollmentVoiceFeedback.style.color = action.color;
     elements.enrollmentPrompt.textContent = `${active.name} spricht jetzt.`;
-    elements.enrollmentHelp.textContent =
-      speechProgress >= 1
-        ? "Genug verwertbare Stimme ist da. Du kannst weiterlaufen lassen oder direkt prüfen."
-        : "Bitte normal und möglichst durchgehend sprechen. Die Wörter sind egal, es wird nichts transkribiert.";
+    elements.enrollmentHelp.textContent = action.help;
     renderEnrollmentChecklist([
       { label: `${active.name} ist ausgewählt`, ok: true },
       { label: feedback.checkLabel, ok: feedback.ok, warning: feedback.warning },
-      { label: `${Math.floor(speechSeconds)}s verwertbare Stimme gesammelt`, ok: speechProgress >= 1 },
-      { label: "Bei genug Stimme auf „Jetzt prüfen“ klicken", ok: false }
+      {
+        label: `Mindestens ${ENROLLMENT_MIN_SECONDS}s aufnehmen (${Math.floor(elapsed)}s da)`,
+        ok: readiness.enoughTime
+      },
+      {
+        label: `${Math.floor(speechSeconds)}s verwertbare Stimme gesammelt`,
+        ok: readiness.enoughSpeech
+      },
+      {
+        label: `${state.enrollmentSpeechSegments}/${ENROLLMENT_VARIETY_SEGMENTS} unterschiedliche Sprachabschnitte`,
+        ok: readiness.enoughVariety,
+        warning: readiness.enoughSpeech && !readiness.enoughVariety
+      },
+      { label: readiness.canCheck ? "Jetzt prüfbar" : "Noch aufnehmen", ok: readiness.canCheck, busy: !readiness.canCheck }
     ]);
     return;
   }
@@ -850,7 +904,7 @@ function renderEnrollmentStatus() {
   if (next) {
     elements.enrollmentStateBadge.textContent = next.needsMoreAudio ? "Mehr nötig" : "Bereit";
     elements.enrollmentStateBadge.className = next.needsMoreAudio ? "status-badge is-warning" : "status-badge is-ready";
-    elements.enrollmentTimer.textContent = "20s";
+    elements.enrollmentTimer.textContent = "10-30s";
     elements.enrollmentVoiceFeedback.textContent = next.needsMoreAudio ? "Noch nicht klar genug" : "Bereit für Stimmprobe";
     elements.enrollmentVoiceFeedback.style.color = color;
     elements.enrollmentPrompt.textContent = next.needsMoreAudio
@@ -858,7 +912,7 @@ function renderEnrollmentStatus() {
       : `${next.name}: Namen prüfen, dann Stimmprobe starten.`;
     elements.enrollmentHelp.textContent = next.needsMoreAudio
       ? profileStatusText(next)
-      : "Die Person muss nur normal sprechen. Namen kommen aus dem Textfeld, nicht aus Sprache.";
+      : "Die Person spricht in ganzen, abwechslungsreichen Sätzen. Namen kommen aus dem Textfeld, nicht aus Sprache.";
     renderEnrollmentChecklist([
       { label: "Mikrofon aktiv", ok: true },
       { label: `${next.name} ist als nächste Person dran`, ok: true },
@@ -899,6 +953,38 @@ function enrollmentSpeechSeconds() {
   return state.enrollmentSpeechMs / 1000;
 }
 
+function enrollmentReadiness() {
+  const elapsed = enrollmentElapsedSeconds();
+  const speechSeconds = enrollmentSpeechSeconds();
+  const enoughTime = elapsed >= ENROLLMENT_MIN_SECONDS;
+  const enoughSpeech = speechSeconds >= ENROLLMENT_MIN_SPEECH_SECONDS;
+  const enoughVariety = state.enrollmentSpeechSegments >= ENROLLMENT_VARIETY_SEGMENTS;
+  const goodLevel = state.enrollmentLastRms >= ENROLLMENT_GOOD_LEVEL;
+  const voiceDetected = state.enrollmentLastRms >= ENROLLMENT_LOW_LEVEL;
+  const strong = enoughTime && speechSeconds >= ENROLLMENT_TARGET_SPEECH_SECONDS && enoughVariety && goodLevel;
+  const canCheck = enoughTime && enoughSpeech && state.enrollmentSpeechSegments >= 2;
+
+  return {
+    elapsed,
+    speechSeconds,
+    enoughTime,
+    enoughSpeech,
+    enoughVariety,
+    goodLevel,
+    voiceDetected,
+    strong,
+    canCheck,
+    neededTime: Math.max(0, ENROLLMENT_MIN_SECONDS - elapsed),
+    neededSpeech: Math.max(0, ENROLLMENT_MIN_SPEECH_SECONDS - speechSeconds),
+    neededTargetSpeech: Math.max(0, ENROLLMENT_TARGET_SPEECH_SECONDS - speechSeconds),
+    neededSegments: Math.max(0, ENROLLMENT_VARIETY_SEGMENTS - state.enrollmentSpeechSegments)
+  };
+}
+
+function enrollmentCanBeChecked() {
+  return Boolean(state.activeEnrollmentId) && enrollmentReadiness().canCheck;
+}
+
 function enrollmentLevelFeedback() {
   const rms = state.enrollmentLastRms;
 
@@ -927,6 +1013,72 @@ function enrollmentLevelFeedback() {
     color: "#b42318",
     ok: false,
     warning: true
+  };
+}
+
+function enrollmentGuidance(readiness, levelFeedback) {
+  const remainingMax = Math.max(0, ENROLLMENT_MAX_SECONDS - readiness.elapsed);
+  const usefulMissing = Math.ceil(Math.max(readiness.neededTime, readiness.neededSpeech, readiness.neededTargetSpeech));
+
+  if (!readiness.voiceDetected) {
+    return {
+      label: "Lauter sprechen",
+      help: "Die Stimme ist gerade zu leise oder es ist Pause. Bitte näher ans Mikrofon und normal weiter sprechen.",
+      timer: `${Math.ceil(remainingMax)}s max`,
+      color: "#b42318"
+    };
+  }
+
+  if (!readiness.goodLevel) {
+    return {
+      label: "Etwas lauter",
+      help: "Stimme kommt an, aber knapp. Bitte etwas lauter oder näher am Mikrofon sprechen.",
+      timer: `${Math.ceil(remainingMax)}s max`,
+      color: "#9a5b00"
+    };
+  }
+
+  if (!readiness.enoughTime) {
+    return {
+      label: `${Math.ceil(readiness.neededTime)}s weiter sprechen`,
+      help: `Ich brauche mindestens ${ENROLLMENT_MIN_SECONDS}s Aufnahme, damit das Profil nicht zu dünn wird. Bitte normal weiter sprechen.`,
+      timer: `${Math.ceil(readiness.neededTime)}s min`,
+      color: levelFeedback.color
+    };
+  }
+
+  if (!readiness.enoughSpeech) {
+    return {
+      label: `${Math.ceil(readiness.neededSpeech)}s Stimme fehlen`,
+      help: "Es gab noch zu viel Pause oder zu wenig verwertbare Stimme. Bitte durchgehend in ganzen Sätzen sprechen.",
+      timer: `${Math.ceil(readiness.neededSpeech)}s Stimme`,
+      color: "#9a5b00"
+    };
+  }
+
+  if (!readiness.enoughVariety) {
+    return {
+      label: "Unterschiedlicher sprechen",
+      help: "Bitte noch ein paar andere Sätze sprechen, mit normaler Betonung. Das hilft, ähnliche Stimmen besser zu trennen.",
+      timer: "mehr Abwechslung",
+      color: "#9a5b00"
+    };
+  }
+
+  if (readiness.strong) {
+    return {
+      label: "Genug Stimme, prüfe",
+      help: "Das Profil hat genug verwertbare Stimme. Die App beendet die Stimmprobe jetzt automatisch und prüft das Profil.",
+      timer: "prüft",
+      color: "#1e7942"
+    };
+  }
+
+  return {
+    label: "Schon prüfbar",
+    help: `Die Mindestqualität ist erreicht. Noch etwa ${Math.max(1, usefulMissing)}s mit unterschiedlichen Sätzen können das Profil verbessern.`,
+    timer: `${Math.max(1, usefulMissing)}s besser`,
+    color: "#1f6fba"
   };
 }
 
